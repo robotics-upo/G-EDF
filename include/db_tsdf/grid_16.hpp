@@ -1,5 +1,5 @@
-#ifndef __GRID_32_HPP__
-#define __GRID_32_HPP__
+#ifndef __GRID_16_HPP__
+#define __GRID_16_HPP__
 
 
 #include <algorithm>  
@@ -14,17 +14,16 @@
 #include <clocale>
 
 
-// 8-byte voxel record
 struct VoxelData
 {
-	uint32_t d;		// Manhattan mask (bit-count -> distance)
+	uint16_t d;		// Manhattan mask (bit-count -> distance)
 	uint8_t s;		// bit0: sign (0 occ / 1 free)
-	uint16_t hits;	// hit counter
+	uint8_t hits;	// hit counter
 };
-static_assert(sizeof(VoxelData) == 8, "VoxelData must be 8-bytes aligned");
+static_assert(sizeof(VoxelData) == 4, "VoxelData must be 4-bytes aligned");
 
 
-class GRID32
+class GRID16
 {
     public:
 
@@ -77,11 +76,11 @@ class GRID32
     };
 
 
-    GRID32(void)
+    GRID16(void)
 	{
 		_grid = NULL;
         _buffer = NULL; // Circular buffer to store all cell masks
-		_garbage = VoxelData{0xFFFFFFFFu, 0xFF, 0xFFFF};
+		_garbage = VoxelData{0xFFFFu, 0xFF, 0xFF};
 		_dummy = NULL;       
 
     }
@@ -127,12 +126,12 @@ class GRID32
         _buffer = (VoxelData *)malloc(_maxCells*_cellSize*sizeof(VoxelData)); // Circular buffer to store all cell masks
         std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(VoxelData));     // Init the buffer to longest distance
         for(int i=0; i<_maxCells; i++)
-			_buffer[i*_cellSize] = VoxelData{static_cast<uint32_t>(_gridSize), 0xFF, 0xFFFF};
+			_buffer[i*_cellSize] = VoxelData{static_cast<uint16_t>(_gridSize), 0xFF, 0xFF};
         _cellIndex = 0;
 
 		_dummy = (VoxelData*)malloc(_cellSize * sizeof(VoxelData));
 		std::memset(_dummy, -1, _cellSize * sizeof(VoxelData));
-		_dummy[0] = VoxelData{static_cast<uint32_t>(_gridSize), 0xFF, 0xFFFF};
+		_dummy[0] = VoxelData{static_cast<uint16_t>(_gridSize), 0xFF, 0xFF};
 
         _grid = (VoxelData**)malloc(_gridSize * sizeof(VoxelData*));
         for (uint32_t k = 0; k < _gridSize; ++k) _grid[k] = _dummy;
@@ -142,7 +141,7 @@ class GRID32
 
     }    
 
-    ~GRID32(void)
+    ~GRID16(void)
 	{
 		if(_grid != NULL)
 			free(_grid);
@@ -159,7 +158,7 @@ class GRID32
 		for (uint32_t k = 0; k < _gridSize; ++k) _grid[k] = _dummy; // Set pointers to dummy
 		std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(VoxelData));     // Init the buffer to longest distance
         for(int i=0; i<_maxCells; i++)
-			_buffer[i*_cellSize] = VoxelData{static_cast<uint32_t>(_gridSize), 0xFF, 0xFFFF};
+			_buffer[i*_cellSize] = VoxelData{static_cast<uint32_t>(_gridSize), 0xFF, 0xFF};
         _cellIndex = 0;
 	}
 
@@ -177,12 +176,12 @@ class GRID32
                 _grid[_grid[i][0].d] = _dummy;
             }
             VoxelData* cell = _grid[i];
-            for (uint32_t j = 1; j < _cellSize; ++j) {
-                cell[j].d    = 0xFFFFFFFFu;
+            for (uint16_t j = 1; j < _cellSize; ++j) {
+                cell[j].d    = 0xFFFFU;
                 cell[j].s    = 1u;
                 cell[j].hits = 0u;
             }
-            cell[0] = VoxelData{static_cast<uint32_t>(i), 0xFF, 0xFFFF};
+            cell[0] = VoxelData{static_cast<uint16_t>(i), 0xFF, 0xFF};
 			_cellIndex++;
 		}
 	}
@@ -266,12 +265,12 @@ class GRID32
         }
         if (cloud->empty())
         {
-            std::cerr << "[GRID32] Warning: Empty Cloud (no mask==0 found).\n";
+            std::cerr << "[GRID16] Warning: Empty Cloud (no mask==0 found).\n";
             return;
         }
-        std::cout << "[GRID32] Total points (mask==0): " << cloud->size() << "\n";
+        std::cout << "[GRID16] Total points (mask==0): " << cloud->size() << "\n";
         pcl::io::savePCDFileBinary(filename, *cloud);
-        std::cout << "[GRID32] PCD exported: " << filename << "\n";
+        std::cout << "[GRID16] PCD exported: " << filename << "\n";
     }
 
     void exportGridToPLY(const std::string& filename, int subsampling_factor)
@@ -315,12 +314,12 @@ class GRID32
         }
         if (cloud->empty())
         {
-            std::cerr << "[GRID32] Warning: Empty Cloud (no mask==0 found).\n";
+            std::cerr << "[GRID16] Warning: Empty Cloud (no mask==0 found).\n";
             return;
         }
-        std::cout << "[GRID32] Total points (mask==0): " << cloud->size() << "\n";
+        std::cout << "[GRID16] Total points (mask==0): " << cloud->size() << "\n";
         pcl::io::savePLYFileBinary(filename, *cloud);
-        std::cout << "[GRID32] PLY exported: " << filename << "\n";
+        std::cout << "[GRID16] PLY exported: " << filename << "\n";
     }
 
 

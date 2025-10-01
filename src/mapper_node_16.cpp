@@ -25,11 +25,10 @@
 
 #include "nav_msgs/msg/occupancy_grid.hpp"
 
-#include <db_tsdf/tsdf3d_32.hpp>
-#include <db_tsdf/grid_32.hpp>
+#include <db_tsdf/tsdf3d_16.hpp>
+#include <db_tsdf/grid_16.hpp>
 
 #include <memory>      
-// #include "mesh/vtk_mesh_extractor.hpp"
 
 #include <geometry_msgs/msg/transform_stamped.hpp> 
 #include <mutex> 
@@ -76,12 +75,7 @@ public:
         // Publishers
         m_keyframePub = this->create_publisher<sensor_msgs::msg::PointCloud2>("keyframe", 100);
         m_cloudPub = this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud", 100);
-        slice_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("/grid_slice", 100);
-        slice_step_ = static_cast<float>(m_tdfGridRes);
-        slice_z_    = static_cast<float>(m_tdfGridSizeZ_low) + slice_step_*0.5f;
-        slice_dir_  = +1;
         using namespace std::chrono_literals;
-        // slice_timer_ = this->create_wall_timer(300ms, std::bind(&TSDFNode::publishSliceCB, this));
 
         // Subscriptions
         auto qos_keepall_reliable = rclcpp::QoS(rclcpp::KeepAll()).reliable().durability_volatile();
@@ -94,19 +88,11 @@ public:
             m_inTfTopic, qos_keepall_reliable,
             std::bind(&TSDFNode::tfCallback, this, std::placeholders::_1));
 
-        // Services: async exports (non-blocking)
-        // save_service_csv_ = this->create_service<std_srvs::srv::Trigger>( "/save_grid_csv",
-        //     std::bind(&TSDFNode::saveGridCSV, this, std::placeholders::_1, std::placeholders::_2));
-
         save_service_pcd_ = this->create_service<std_srvs::srv::Trigger>( "/save_grid_pcd",
             std::bind(&TSDFNode::saveGridPCD, this, std::placeholders::_1, std::placeholders::_2));
 
         save_service_ply_ = this->create_service<std_srvs::srv::Trigger>( "/save_grid_ply",
             std::bind(&TSDFNode::saveGridPLY, this, std::placeholders::_1, std::placeholders::_2));
-
-
-        // save_service_mesh_ = this->create_service<std_srvs::srv::Trigger>( "/save_grid_mesh",
-        //     std::bind(&TSDFNode::saveGridMesh, this, std::placeholders::_1, std::placeholders::_2));
 
         // TDF grid allocation
         m_grid3d.setup(m_tdfGridSizeX_low, m_tdfGridSizeX_high,
@@ -139,7 +125,7 @@ private:
     double m_minRange, m_maxRange;
 
     // TDF grid and geometry
-    TSDF3D32 m_grid3d;
+    TSDF3D16 m_grid3d;
     double m_tdfGridSizeX_low, m_tdfGridSizeX_high, 
            m_tdfGridSizeY_low, m_tdfGridSizeY_high, 
            m_tdfGridSizeZ_low, m_tdfGridSizeZ_high, 
@@ -176,7 +162,6 @@ private:
     std::shared_ptr<tf2_ros::TransformListener> m_tfListener;
 
     // Services
-    // rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_service_csv_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_service_pcd_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_service_ply_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_service_mesh_;
@@ -185,36 +170,12 @@ private:
     void pointcloudCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud);
     void tfCallback(geometry_msgs::msg::TransformStamped::ConstSharedPtr msg);
     Eigen::Matrix4f getTransformMatrix(const geometry_msgs::msg::TransformStamped& transform_stamped);
-    // void saveGridCSV(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-    //                        std::shared_ptr<std_srvs::srv::Trigger::Response> response);
     void saveGridPCD(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                            std::shared_ptr<std_srvs::srv::Trigger::Response> response);
     void saveGridPLY(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                            std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-    // void saveGridMesh(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-    //                         std::shared_ptr<std_srvs::srv::Trigger::Response> response);
-    // void publishSliceCB();
 
 };
-
-// void TSDFNode::saveGridCSV(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
-//                                  std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-
-//     RCLCPP_INFO(this->get_logger(), "Received request to save CSV. Starting in a separate thread...");
-    
-//     std::thread([this]() {
-//         RCLCPP_INFO(this->get_logger(), "Generating CSV...");
-//         m_grid3d.exportGridToCSV("grid_data.csv",m_tdfGridSizeX_low, m_tdfGridSizeX_high,
-//                     m_tdfGridSizeY_low, m_tdfGridSizeY_high,
-//                     m_tdfGridSizeZ_low, m_tdfGridSizeZ_high,
-//                       1);
-//         RCLCPP_INFO(this->get_logger(), "CSV saved successfully..");
-//     }).detach();
-
-//     response->success = true;
-//     response->message = "CSV export started in the background.";
-
-// }
 
 // ros2 service call /save_grid_pcd std_srvs/srv/Trigger
 // Export grid as PCD (async)
@@ -233,7 +194,6 @@ void TSDFNode::saveGridPCD(const std::shared_ptr<std_srvs::srv::Trigger::Request
 }
 
 // ros2 service call /save_grid_ply std_srvs/srv/Trigger
-// Export grid as PLY (async)
 void TSDFNode::saveGridPLY(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                                  std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     RCLCPP_INFO(this->get_logger(), "Received request to save PLY. Starting in a separate thread...");
@@ -376,50 +336,6 @@ Eigen::Matrix4f TSDFNode::getTransformMatrix(const geometry_msgs::msg::Transform
 
         return transform;
 }
-
-// Extract mesh with VTK Marching Cubes (async). Usage:
-//   ros2 service call /save_grid_mesh std_srvs/srv/Trigger "{}"
-// void TSDFNode::saveGridMesh(
-//         const std::shared_ptr<std_srvs::srv::Trigger::Request> ,
-//         std::shared_ptr<std_srvs::srv::Trigger::Response> response)
-//     {
-//     RCLCPP_INFO(this->get_logger(),
-//                 "Received request to save Mesh. Starting in background...");
-
-//     float iso = 0.00f;
-
-//     std::thread([this, iso]() {
-//         try {
-//             VTKMeshExtractor::extract(m_grid3d, "mesh.stl", iso);
-//             RCLCPP_INFO(this->get_logger(), "Mesh saved successfully to mesh.stl (iso=%.3f)", iso);
-//             } catch (const std::exception &e) {
-//             RCLCPP_ERROR(this->get_logger(),
-//                         "Failed to extract mesh: %s", e.what());
-//         }
-//     }).detach();
-
-//     response->success = true;
-//     response->message = "Mesh export started in background.";
-// }
-
-// Publish a moving horizontal slice through the TDF as an OccupancyGrid
-// void TSDFNode::publishSliceCB()
-// {
-//     nav_msgs::msg::OccupancyGrid slice;
-//     m_grid3d.buildGridSliceMsg(slice_z_, slice);            
-
-//     slice_pub_->publish(slice);                  
-
-//     slice_z_ += slice_dir_ * slice_step_;
-
-//     if (slice_z_ > float(m_tdfGridSizeZ_high)) {  
-//         slice_z_  = float(m_tdfGridSizeZ_high);
-//         slice_dir_ = -1;
-//     } else if (slice_z_ < float(m_tdfGridSizeZ_low)) { 
-//         slice_z_  = float(m_tdfGridSizeZ_low);
-//         slice_dir_ = +1;
-//     }
-// }
 
 int main(int argc, char **argv)
 {

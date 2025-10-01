@@ -1,5 +1,5 @@
-#ifndef __TSDF3D_32_HPP__
-#define __TSDF3D_32_HPP__
+#ifndef __TSDF3D_16_HPP__
+#define __TSDF3D_16_HPP__
 
 #include <algorithm>  
 #include <bitset>
@@ -8,7 +8,7 @@
 #include <boost/thread.hpp>
 #include <boost/chrono.hpp>
 #include "rclcpp/clock.hpp"
-#include <db_tsdf/grid_32.hpp>
+#include <db_tsdf/grid_16.hpp>
 
 #include <Eigen/Dense>	
 #include <iostream>
@@ -23,17 +23,17 @@ constexpr int OCC_MIN_HITS = 50;		// hits threshold to mark occupied
 constexpr int SHADOW_RADIUS_MD = 5; 	// shadow radius (voxel units)
 struct DirectionalKernel
 {
-    uint32_t distance_masks[21*21*21];		// Manhattan distance masks
-    uint8_t  signs[21*21*21];		        // 0 = occ, 1 = free
+    uint16_t distance_masks[11*11*11];		// Manhattan distance masks
+    uint8_t  signs[11*11*11];		        // 0 = occ, 1 = free
 };
 
 
-class TSDF3D32
+class TSDF3D16
 {
 	
 public:
 
-	TSDF3D32(void) 
+	TSDF3D16(void) 
 	{
 		m_maxX = 40;
 		m_maxY = 40;
@@ -47,7 +47,7 @@ public:
 		initDirectionalKernels();
 	}
 
-	~TSDF3D32(void)
+	~TSDF3D16(void)
 	{
 	}
 
@@ -171,7 +171,6 @@ public:
 				out.push_back(p);
 			}
 		}
-
 		loadCloud(out);
 	}
 
@@ -190,16 +189,13 @@ public:
 
 		// Applies the pre-computed kernel to all grid cells centered in the cloud points 
 		const float step = 10*m_resolution;
-		#pragma omp parallel for num_threads(20) shared(m_dirKernels, m_grid) 
+		#pragma omp parallel for num_threads(10) shared(m_dirKernels, m_grid) 
 		for(uint32_t i=0; i<cloud.size(); i++)
 		{
 			
 			if(!isIntoGrid(cloud[i].x-step, cloud[i].y-step, cloud[i].z-step) || 
 			   !isIntoGrid(cloud[i].x+step, cloud[i].y+step, cloud[i].z+step))
 				continue;
-						
-			// if(m_grid(cloud[i].x,cloud[i].y,cloud[i].z) == 0)
-			// 	continue;
 
 			// Select kernel by ray direction
 			Eigen::Vector3f dir(cloud[i].x, cloud[i].y, cloud[i].z);
@@ -207,15 +203,15 @@ public:
 
 			int xi, yi, zi, k = 0;
 			float x, y, z;
-			for(zi=0, z=cloud[i].z-step; zi<21; zi++, z+=m_resolution)
-				for(yi=0, y=cloud[i].y-step; yi<21; yi++, y+=m_resolution){
-						GRID32::Iterator it = m_grid.getIterator(cloud[i].x-step,y,z);
-					for(xi=0, x=cloud[i].x-step; xi<21; xi++, x+=m_resolution,++it, ++k){
+			for(zi=0, z=cloud[i].z-step; zi<11; zi++, z+=m_resolution)
+				for(yi=0, y=cloud[i].y-step; yi<11; yi++, y+=m_resolution){
+						GRID16::Iterator it = m_grid.getIterator(cloud[i].x-step,y,z);
+					for(xi=0, x=cloud[i].x-step; xi<11; xi++, x+=m_resolution,++it, ++k){
 						// *it &= kernel[k++];
 						
 						VoxelData &v = *it;
-						uint32_t old_mask = v.d;
-						uint32_t new_mask = old_mask & DK.distance_masks[k];
+						uint16_t old_mask = v.d;
+						uint16_t new_mask = old_mask & DK.distance_masks[k];
 						if (new_mask != old_mask) v.d = new_mask;
 
 						if(DK.signs[k] == 0 && v.hits < OCC_MIN_HITS) 
@@ -239,14 +235,14 @@ public:
 
 			// Get neightbour values to compute trilinear interpolation
 			float c000, c001, c010, c011, c100, c101, c110, c111;
-			c000 = std::bitset<32>(m_grid.read(x, y, z).d).count(); 
-			c001 = std::bitset<32>(m_grid.read(x, y, z+m_resolution).d).count(); 
-			c010 = std::bitset<32>(m_grid.read(x, y+m_resolution, z).d).count(); 
-			c011 = std::bitset<32>(m_grid.read(x, y+m_resolution, z+m_resolution).d).count();  
-			c100 = std::bitset<32>(m_grid.read(x+m_resolution, y, z).d).count();  
-			c101 = std::bitset<32>(m_grid.read(x+m_resolution, y, z+m_resolution).d).count();  
-			c110 = std::bitset<32>(m_grid.read(x+m_resolution, y+m_resolution, z).d).count();  
-			c111 = std::bitset<32>(m_grid.read(x+m_resolution, y+m_resolution, z+m_resolution).d).count(); 
+			c000 = std::bitset<16>(m_grid.read(x, y, z).d).count(); 
+			c001 = std::bitset<16>(m_grid.read(x, y, z+m_resolution).d).count(); 
+			c010 = std::bitset<16>(m_grid.read(x, y+m_resolution, z).d).count(); 
+			c011 = std::bitset<16>(m_grid.read(x, y+m_resolution, z+m_resolution).d).count();  
+			c100 = std::bitset<16>(m_grid.read(x+m_resolution, y, z).d).count();  
+			c101 = std::bitset<16>(m_grid.read(x+m_resolution, y, z+m_resolution).d).count();  
+			c110 = std::bitset<16>(m_grid.read(x+m_resolution, y+m_resolution, z).d).count();  
+			c111 = std::bitset<16>(m_grid.read(x+m_resolution, y+m_resolution, z+m_resolution).d).count(); 
 
 			// Compute trilinear parameters
 			const float div = -m_oneDivRes*m_oneDivRes*m_oneDivRes;
@@ -292,7 +288,7 @@ protected:
 	float m_minX, m_minY, m_minZ;
 	float m_resolution, m_oneDivRes;	
 	// uint64_t kernel[41*41*41];
-	GRID32 m_grid;
+	GRID16 m_grid;
 
 	// Directional kernels
 	std::vector<DirectionalKernel> m_dirKernels;
@@ -304,7 +300,7 @@ protected:
 
 
 // Map direction to bin index (azimuth × elevation)
-inline int TSDF3D32::dirToBin(const Eigen::Vector3f &v) const
+inline int TSDF3D16::dirToBin(const Eigen::Vector3f &v) const
 {
 	float az = std::atan2(v.y(), v.x());
 	if (az < 0) 
@@ -324,7 +320,7 @@ inline int TSDF3D32::dirToBin(const Eigen::Vector3f &v) const
 
 
 // Build 40×40 directional kernels (21³ window per bin)
-inline void TSDF3D32::initDirectionalKernels()
+inline void TSDF3D16::initDirectionalKernels()
 {
 	m_dirKernels.resize(NUM_BINS);
 
@@ -343,17 +339,17 @@ inline void TSDF3D32::initDirectionalKernels()
 		Eigen::Vector3f dir = binToDir(az,el).normalized();
 
 		int k=0;
-		for(int z=-10;z<=10;++z)
-		for(int y=-10;y<=10;++y)
-		for(int x=-10;x<=10;++x,++k)
+		for(int z=-5;z<=5;++z)
+		for(int y=-5;y<=5;++y)
+		for(int x=-5;x<=5;++x,++k)
 		{       
 			constexpr float R_E = float(SHADOW_RADIUS_MD); 
 
 			float re2 = float(x*x + y*y + z*z);            
 			float re  = std::sqrt(re2);
-			int   rd  = std::min(32, int(std::ceil(re)));   
+			int   rd  = std::min(16, int(std::ceil(re)));   
 
-			uint32_t mask = (rd == 0) ? 0u : (0xFFFFFFFFu >> (32 - rd));
+			uint16_t mask = (rd == 0) ? 0u : (0xFFFFu >> (16 - rd));
 			DK.distance_masks[k] = mask;
 
 			bool behind   = dir.dot(Eigen::Vector3f(x,y,z)) > 0.0f;     
