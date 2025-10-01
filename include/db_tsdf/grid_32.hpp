@@ -6,13 +6,31 @@
 #include <bitset>
 #include <stdint.h>
 
+#include <cmath>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/io/ply_io.h>
+#include <clocale>
+
+
+// 8-byte voxel record
+struct VoxelData
+{
+	uint32_t d;		// Manhattan mask (bit-count -> distance)
+	uint8_t s;		// bit0: sign (0 occ / 1 free)
+	uint16_t hits;	// hit counter
+};
+static_assert(sizeof(VoxelData) == 8, "VoxelData must be 8-bytes aligned");
+
+
 class GRID32
 {
     public:
 
 	struct Iterator
     {
-        Iterator(uint64_t **grid, uint32_t i, uint32_t base, uint32_t j, uint32_t cellSizeX) 
+        Iterator(VoxelData **grid, uint32_t i, uint32_t base, uint32_t j, uint32_t cellSizeX) 
         { 
             _grid = grid; 
             _i = i;
@@ -33,11 +51,11 @@ class GRID32
             return *this;
         }
 
-        uint64_t &operator*() { 
+        VoxelData &operator*() { 
             return _curr[_j+_base]; 
         }
 
-        uint64_t *operator->() { return _curr + _j + _base; }
+        VoxelData *operator->() { return _curr + _j + _base; }
 
         Iterator& operator++() 
         { 
@@ -53,8 +71,8 @@ class GRID32
 
         protected:
 
-        uint64_t **_grid;
-        uint64_t *_curr;
+        VoxelData **_grid;
+        VoxelData *_curr;
         uint32_t _i, _j, _base, _cellSizeX;
     };
 
@@ -63,7 +81,7 @@ class GRID32
 	{
 		_grid = NULL;
         _buffer = NULL; // Circular buffer to store all cell masks
-		_garbage = UINT64_MAX;
+		_garbage = VoxelData{0xFFFFFFFFu, 0xFF, 0xFFFF};
 		_dummy = NULL;       
 
     }
@@ -106,18 +124,21 @@ class GRID32
         _cellStepY = _cellSizeX;
         _cellStepZ = _cellSizeX*_cellSizeY;
         _cellSize = 1 + _cellSizeX*_cellSizeY*_cellSizeZ;  // The 1 is to store control information of the cell
-        _buffer = (uint64_t *)malloc(_maxCells*_cellSize*sizeof(uint64_t)); // Circular buffer to store all cell masks
-        std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(uint64_t));     // Init the buffer to longest distance
+        _buffer = (VoxelData *)malloc(_maxCells*_cellSize*sizeof(VoxelData)); // Circular buffer to store all cell masks
+        std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(VoxelData));     // Init the buffer to longest distance
         for(int i=0; i<_maxCells; i++)
-			_buffer[i*_cellSize] = (uint64_t)_gridSize;
+			_buffer[i*_cellSize] = VoxelData{static_cast<uint32_t>(_gridSize), 0xFF, 0xFFFF};
         _cellIndex = 0;
 
-		_dummy = (uint64_t*)malloc(_cellSize * sizeof(uint64_t));
-		std::memset(_dummy, -1, _cellSize * sizeof(uint64_t));
-		_dummy[0] = (uint64_t)_gridSize;
+		_dummy = (VoxelData*)malloc(_cellSize * sizeof(VoxelData));
+		std::memset(_dummy, -1, _cellSize * sizeof(VoxelData));
+		_dummy[0] = VoxelData{static_cast<uint32_t>(_gridSize), 0xFF, 0xFFFF};
 
-        _grid = (uint64_t**)malloc(_gridSize * sizeof(uint64_t*));
+        _grid = (VoxelData**)malloc(_gridSize * sizeof(VoxelData*));
         for (uint32_t k = 0; k < _gridSize; ++k) _grid[k] = _dummy;
+
+
+
 
     }    
 
@@ -136,9 +157,9 @@ class GRID32
 	void clear(void)
 	{
 		for (uint32_t k = 0; k < _gridSize; ++k) _grid[k] = _dummy; // Set pointers to dummy
-		std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(uint64_t));     // Init the buffer to longest distance
+		std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(VoxelData));     // Init the buffer to longest distance
         for(int i=0; i<_maxCells; i++)
-			_buffer[i*_cellSize] = _gridSize;
+			_buffer[i*_cellSize] = VoxelData{static_cast<uint32_t>(_gridSize), 0xFF, 0xFFFF};
         _cellIndex = 0;
 	}
 
@@ -152,18 +173,21 @@ class GRID32
 		if( _grid[i] == _dummy)  
 		{
 			_grid[i] = _buffer + (_cellIndex % _maxCells)*_cellSize;
-
-			if(_grid[i][0] != (uint64_t)_gridSize)
-			{
-				_grid[(uint64_t)_grid[i][0]] = _dummy;
-				std::memset(&(_grid[i][1]), -1, (_cellSize-1)*sizeof(uint64_t));     // Init the mask to longest distance
-			} 
-			_grid[i][0] = (uint64_t)i; 
+            if (_grid[i][0].d != _gridSize) {
+                _grid[_grid[i][0].d] = _dummy;
+            }
+            VoxelData* cell = _grid[i];
+            for (uint32_t j = 1; j < _cellSize; ++j) {
+                cell[j].d    = 0xFFFFFFFFu;
+                cell[j].s    = 1u;
+                cell[j].hits = 0u;
+            }
+            cell[0] = VoxelData{static_cast<uint32_t>(i), 0xFF, 0xFFFF};
 			_cellIndex++;
 		}
 	}
 
-	uint64_t &operator()(float x, float y, float z)
+	VoxelData &operator()(float x, float y, float z)
 	{
 		x -= _minX;
 		y -= _minY;
@@ -176,7 +200,7 @@ class GRID32
         return _grid[i][j];
 	}
 
-	uint64_t read(float x, float y, float z)
+	VoxelData read(float x, float y, float z)
 	{
 		x -= _minX;
 		y -= _minY;
@@ -201,89 +225,117 @@ class GRID32
 		return Iterator(_grid, i, 1 + (uint32_t)((y-int_y)*_oneDivRes)*_cellStepY + (uint32_t)((z-int_z)*_oneDivRes)*_cellStepZ, (uint32_t)((x-int_x)*_oneDivRes), _cellSizeX);
 	}
 
-void exportGridToPCD(const std::string& filename, int subsampling_factor, bool only_occupied=true, bool only_border=true)
-{
-	pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>);
+    void exportGridToPCD(const std::string& filename, int subsampling_factor)
+        {
+        using PointT = pcl::PointXYZ;
+        pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+        const uint32_t step = std::max(1, subsampling_factor);
 
-	for (int iz = 0; iz < m_gridSizeZ; iz += subsampling_factor)
-	{
-		float z = m_minZ + iz * m_resolution;
-		for (int iy = 0; iy < m_gridSizeY; iy += subsampling_factor)
-		{
-			float y = m_minY + iy * m_resolution;
-			for (int ix = 0; ix < m_gridSizeX; ix += subsampling_factor)
-			{
-				float x = m_minX + ix * m_resolution;
-				uint64_t index = ix + iy * m_gridStepY + iz * m_gridStepZ;
-				if (only_occupied && !(m_gridData[index].hits >= OCC_MIN_HITS))	continue;
-				float dist = voxelDist(index);
-				if (only_border && dist != 0.0f)	continue;
-				
-				pcl::PointXYZI point;
-				point.x = x;	point.y = y;	point.z = z;
-				point.intensity = static_cast<float>(m_gridData[index].hits);
-				cloud->push_back(point);
-				
-			}
-		}
-	}
+        for (uint32_t cz = 0; cz < _gridSizeZ; ++cz)
+        {
+            const float z0 = _minZ + static_cast<float>(cz);
+            for (uint32_t cy = 0; cy < _gridSizeY; ++cy)
+            {
+                const float y0 = _minY + static_cast<float>(cy);
+                for (uint32_t cx = 0; cx < _gridSizeX; ++cx)
+                {
+                    const float x0 = _minX + static_cast<float>(cx);
+                    const uint32_t i = cx + cy * _gridStepY + cz * _gridStepZ;
+                    VoxelData* cell = _grid[i];
+                    if (cell == _dummy) continue;
+                    for (uint32_t vz = 0; vz < _cellSizeZ; vz += step) {
+                        for (uint32_t vy = 0; vy < _cellSizeY; vy += step) {
+                            for (uint32_t vx = 0; vx < _cellSizeX; vx += step) {
+                                const uint32_t j = 1u + vx + vy * _cellStepY + vz * _cellStepZ;
 
-	if (cloud->empty())
-	{
-		std::cerr << "[GRID32] Warning: Empty Cloud (no mask==0 found).\n";
-		return;
-	}
+                               const uint32_t dist = __builtin_popcount(cell[j].d);   
+                                if (dist > 1u)                 continue;            
+                                if ((cell[j].s & 0x01u) != 0u)  continue;    
 
-	std::cout << "[GRID32] Total points (mask==0): " << cloud->size() << "\n";
-    pcl::io::savePCDFileBinary(filename, *cloud);
-    std::cout << "[GRID32] PCD exported: " << filename << "\n";
-}
-
-void exportGridToPLY(const std::string& filename, int subsampling_factor, bool only_occupied=true, bool only_border=true, uint16_t min_hits  = OCC_MIN_HITS)     
-{
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
-	cloud->reserve((m_gridSizeX*m_gridSizeY*m_gridSizeZ)/(subsampling_factor*subsampling_factor*subsampling_factor));
-
-	for (int iz = 0; iz < m_gridSizeZ; iz += subsampling_factor) {
-		float z = m_minZ + iz * m_resolution;
-		for (int iy = 0; iy < m_gridSizeY; iy += subsampling_factor) {
-			float y = m_minY + iy * m_resolution;
-			for (int ix = 0; ix < m_gridSizeX; ix += subsampling_factor) {
-				float x = m_minX + ix * m_resolution;
-				uint64_t index = ix + iy * m_gridStepY + iz * m_gridStepZ;
-
-				if (only_occupied && m_gridData[index].hits < min_hits) continue; 
-				float dist = voxelDist(index);
-				if (only_border && dist != 0.0f) continue;                     
-
-				cloud->push_back(pcl::PointXYZ{x,y,z});
-			}
-		}
-	}
-	if (cloud->empty()) { 
-        std::cerr << "[GRID32] Warning: Empty Cloud (no mask==0 found).\n";
-        return; 
+                                PointT pt;
+                                pt.x = x0 + (vx + 0.5f) * _cellRes;
+                                pt.y = y0 + (vy + 0.5f) * _cellRes;
+                                pt.z = z0 + (vz + 0.5f) * _cellRes;
+                                // pt.intensity = 0.0f;
+                                cloud->push_back(pt);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (cloud->empty())
+        {
+            std::cerr << "[GRID32] Warning: Empty Cloud (no mask==0 found).\n";
+            return;
+        }
+        std::cout << "[GRID32] Total points (mask==0): " << cloud->size() << "\n";
+        pcl::io::savePCDFileBinary(filename, *cloud);
+        std::cout << "[GRID32] PCD exported: " << filename << "\n";
     }
 
-    std::cout << "[GRID32] Total points (mask==0): " << cloud->size() << "\n";
-    pcl::io::savePCDFileBinary(filename, *cloud);
-    std::cout << "[GRID32] PLY exported: " << filename << "\n";
-}
+    void exportGridToPLY(const std::string& filename, int subsampling_factor)
+    {
+        using PointT = pcl::PointXYZ;
+        pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+        const uint32_t step = std::max(1, subsampling_factor);
 
-	protected:
+        for (uint32_t cz = 0; cz < _gridSizeZ; ++cz)
+        {
+            const float z0 = _minZ + static_cast<float>(cz);
+            for (uint32_t cy = 0; cy < _gridSizeY; ++cy)
+            {
+                const float y0 = _minY + static_cast<float>(cy);
+                for (uint32_t cx = 0; cx < _gridSizeX; ++cx)
+                {
+                    const float x0 = _minX + static_cast<float>(cx);
+                    const uint32_t i = cx + cy * _gridStepY + cz * _gridStepZ;
+                    VoxelData* cell = _grid[i];
+                    if (cell == _dummy) continue;
+                    for (uint32_t vz = 0; vz < _cellSizeZ; vz += step) {
+                        for (uint32_t vy = 0; vy < _cellSizeY; vy += step) {
+                            for (uint32_t vx = 0; vx < _cellSizeX; vx += step) {
+                                const uint32_t j = 1u + vx + vy * _cellStepY + vz * _cellStepZ;
+
+                               const uint32_t dist = __builtin_popcount(cell[j].d); 
+                                if (dist > 1u)                 continue;            
+                                if ((cell[j].s & 0x01u) != 0u)  continue;            
+
+                                PointT pt;
+                                pt.x = x0 + (vx + 0.5f) * _cellRes;
+                                pt.y = y0 + (vy + 0.5f) * _cellRes;
+                                pt.z = z0 + (vz + 0.5f) * _cellRes;
+                                // pt.intensity = 0.0f;
+                                cloud->push_back(pt);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (cloud->empty())
+        {
+            std::cerr << "[GRID32] Warning: Empty Cloud (no mask==0 found).\n";
+            return;
+        }
+        std::cout << "[GRID32] Total points (mask==0): " << cloud->size() << "\n";
+        pcl::io::savePLYFileBinary(filename, *cloud);
+        std::cout << "[GRID32] PLY exported: " << filename << "\n";
+    }
 
 
+protected:
 
-    uint64_t **_grid;
+    VoxelData **_grid;
     float _maxX, _maxY, _maxZ, _minX, _minY, _minZ;
 	uint32_t _gridSizeX, _gridSizeY, _gridSizeZ, _gridStepY, _gridStepZ, _gridSize;
     float _cellRes, _oneDivRes;
     uint32_t _cellSizeX, _cellSizeY, _cellSizeZ, _cellStepY, _cellStepZ, _cellSize;
     uint32_t _maxCells, _cellIndex;
-    uint64_t *_buffer;
-	uint64_t *_dummy;
+    VoxelData *_buffer;
+	VoxelData *_dummy;
 
-	uint64_t _garbage;
+	VoxelData _garbage;
 };
 
 #endif

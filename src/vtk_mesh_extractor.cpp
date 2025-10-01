@@ -6,7 +6,7 @@
 
 constexpr float KEEP_RATIO = 0.00f;   // Ratio of max voxel hits used as hit threshold
 
-void VTKMeshExtractor::extract(const TDF3D32 &grid,
+void VTKMeshExtractor::extract(const TSDF3D32 &grid,
                                const std::string &filename,
                                float iso_level)
 {

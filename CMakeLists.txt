@@ -41,7 +41,9 @@ find_package(VTK REQUIRED COMPONENTS
 )
 
 
-add_executable(db_tsdf_mapper  src/mapper_node_32.cpp  src/vtk_mesh_extractor.cpp)
+# add_executable(db_tsdf_mapper  src/mapper_node_32.cpp  src/vtk_mesh_extractor.cpp)
+add_executable(db_tsdf_mapper  src/mapper_node_32.cpp)
+
 
 ament_target_dependencies(db_tsdf_mapper
   rclcpp

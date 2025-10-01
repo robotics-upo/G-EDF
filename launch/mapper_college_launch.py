@@ -67,7 +67,7 @@ def generate_launch_description():
                 {'use_tf':       True},
                 {'pc_downsampling':   1},
                 {'min_range':         1.5},
-                {'max_range':        200.0},
+                {'max_range':        90.0},
                 {'base_frame_id':     'base_link'},
                 {'odom_frame_id':     'odom'},
 
@@ -79,29 +79,23 @@ def generate_launch_description():
                 # {'tdfGridSizeZ_high':  25.0},
                 # {'tdf_grid_res':      0.05},
 
-                # {'tdfGridSizeX_low':  -0.0},
-                # {'tdfGridSizeX_high':  15.0},
-                # {'tdfGridSizeY_low':  -10.0},
-                # {'tdfGridSizeY_high':  20.0},
-                # {'tdfGridSizeZ_low':   -5.0},
-                # {'tdfGridSizeZ_high':  20.0},
-                # {'tdf_grid_res':      0.025},
-
-                {'tdfGridSizeX_low':   -30.0},
-                {'tdfGridSizeX_high':  40.0},
-                {'tdfGridSizeY_low':   -60.0},
-                {'tdfGridSizeY_high':  20.0},
-                {'tdfGridSizeZ_low':   -3.0},
-                {'tdfGridSizeZ_high':  25.0},
-                {'tdf_grid_res':      0.05},
-
                 # {'tdfGridSizeX_low':   -30.0},
                 # {'tdfGridSizeX_high':  40.0},
-                # {'tdfGridSizeY_low':   -10.0},
+                # {'tdfGridSizeY_low':   -60.0},
                 # {'tdfGridSizeY_high':  20.0},
                 # {'tdfGridSizeZ_low':   -3.0},
                 # {'tdfGridSizeZ_high':  25.0},
                 # {'tdf_grid_res':      0.05},
+
+
+                {'tdfGridSizeX_low':   -100.0},
+                {'tdfGridSizeX_high':  100.0},
+                {'tdfGridSizeY_low':   -100.0},
+                {'tdfGridSizeY_high':  100.0},
+                {'tdfGridSizeZ_low':   -10.0},
+                {'tdfGridSizeZ_high':  50.0},
+                {'tdf_grid_res':       0.05},
+                {'tdf_max_cells':      100000.0},
                 ]
         ),
 

@@ -27,7 +27,7 @@ public:
   /// \param grid      
   /// \param filename 
   /// \param iso_level
-  static void extract(const TDF3D32 &grid,
+  static void extract(const TSDF3D32 &grid,
                       const std::string &filename,
                       float iso_level);
 };
