@@ -31,6 +31,7 @@
   <!-- System dependencies -->
   <exec_depend>libann-dev</exec_depend>
   <exec_depend>libgoogle-glog-dev</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
 
   <!-- Testing dependencies -->
   <test_depend>ament_lint_auto</test_depend>

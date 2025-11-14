@@ -1,13 +1,12 @@
 <h1 align="center"><a href="https://arxiv.org/html/2509.20081v1" style="text-decoration:none;color:inherit;">DB-TSDF: Directional Bitmask-based Truncated Signed Distance Fields for Efficient Volumetric Mapping</a></h1>
 
 <p align="center">
-<strong>👉 <a href="https://robotics-upo.github.io/DB-TSDF/">Visit the project website</a> 👈</strong>
+<strong>🤖 <a href="https://robotics-upo.github.io/DB-TSDF/">Visit the project website</a> 🤖</strong>
 </p>
 
 <div align="center">
-  <a href="https://youtu.be/P4Hx4bD1OmM" 
-     style="display: inline-block; margin-right: 10px; text-decoration: none; vertical-align: middle;">
-    <img src="https://img.shields.io/badge/YouTube-Video-red?logo=youtube" alt="YouTube Video">
+<a href="https://youtu.be/P4Hx4bD1OmM"><img src="https://img.shields.io/badge/YouTube-Video-red?logo=youtube" alt="YouTube Video"></a>
+  <a href="https://arxiv.org/html/2509.20081v1"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv" alt="arXiv Paper"></a>
   </a>
 </div>
 
@@ -93,15 +92,17 @@ The Dockerfile sets up the entire environment and downloads the DB-TSDF code aut
 
 ## 3. Running the Code
 
-The code can be launched automatically using one of the available launch files. There is a generic launch file, **mapper_college_launch.py**, which serves as a template for adapting the configuration to the specific dataset. There are predefined launch files tailored for the College and Mai City datasets.
+The launch system uses a single main launch file (`db_tsdf_launch.py`) and a config argument to specify which dataset configuration to load.
 
-To launch the code, use the following example command:
+This argument (e.g., `college`) will automatically load the corresponding parameter file (`college.yaml`) and the RViz configuration (`college.rviz`).
+
+First, open a terminal, source your workspace, and run the launch file. The node will start, RViz will open, and the system will wait for data.
+
+To launch using the college configuration:
    ```bash
-   ros2 launch db_tsdf mapper_college_launch.py
+   ros2 launch db_tsdf db_tsdf_launch.py config:=college
    ```
-This command will start the node and prepare it to receive information via the topics. The node will remain in a waiting state until data is published. 
 
-Along with the node and bag file, RViz visualization will also be launched to display a 3D representation of the environmen
 
 To feed data, simply play a recorded ROS 2 bag in another terminal:
    ```bash
@@ -114,10 +115,6 @@ To feed data, simply play a recorded ROS 2 bag in another terminal:
 ## 4. Output data and Services
 
 The node provides ROS 2 services to export the reconstructed map:
-- Mesh (STL)
-   ```bash
-   ros2 service call /save_grid_mesh std_srvs/srv/Trigger "{}"
-   ```
 - Voxel Point Cloud
    ```bash
    ros2 service call /save_grid_ply std_srvs/srv/Trigger "{}"   # grid_data.ply

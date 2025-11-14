@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(db_tsdf)
 
+cmake_policy(SET CMP0074 NEW)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS  OFF) 
@@ -40,12 +41,9 @@ find_package(VTK REQUIRED COMPONENTS
   ImagingMorphological
 )
 
+add_executable(db_tsdf_node  src/mapper_node_16.cpp)
 
-# add_executable(db_tsdf_mapper  src/mapper_node_16.cpp  src/vtk_mesh_extractor.cpp)
-add_executable(db_tsdf_mapper  src/mapper_node_16.cpp)
-
-
-ament_target_dependencies(db_tsdf_mapper
+ament_target_dependencies(db_tsdf_node
   rclcpp
   tf2            tf2_ros
   tf2_geometry_msgs
@@ -55,7 +53,7 @@ ament_target_dependencies(db_tsdf_mapper
   Boost
 )
 
-target_link_libraries(db_tsdf_mapper
+target_link_libraries(db_tsdf_node
   ${PCL_LIBRARIES}
   ${Boost_LIBRARIES}
   OpenMP::OpenMP_CXX
@@ -67,7 +65,7 @@ target_link_libraries(db_tsdf_mapper
   VTK::ImagingGeneral
 )
 
-target_include_directories(db_tsdf_mapper PRIVATE
+target_include_directories(db_tsdf_node PRIVATE
   include
   include/mesh
   ${Boost_INCLUDE_DIRS}
@@ -75,13 +73,18 @@ target_include_directories(db_tsdf_mapper PRIVATE
   ${VTK_INCLUDE_DIRS}
 )
 
-install(
-  DIRECTORY launch/
+install(DIRECTORY 
+  launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
 
+install(DIRECTORY
+  config/
+  DESTINATION share/${PROJECT_NAME}/config
+)
+
 install(TARGETS
-  db_tsdf_mapper
+  db_tsdf_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
