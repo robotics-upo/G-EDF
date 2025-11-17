@@ -16,17 +16,10 @@
 #include <map>  
 #include <set>
 
-// DIRECTIONAL KERNELS
-// constexpr int BINS_AZ  = 40;		// azimuth bins               
-// constexpr int BINS_EL  = 40;		// elevation bins
-// constexpr int NUM_BINS = BINS_AZ * BINS_EL;  
-// constexpr int OCC_MIN_HITS = 50;		// hits threshold to mark occupied
-// constexpr int SHADOW_RADIUS_MD = 5; 	// shadow radius (voxel units)
-// constexpr int OCC_MIN_HITS = 50;
 struct DirectionalKernel
 {
-    uint16_t distance_masks[11*11*11];		// Manhattan distance masks
-    uint8_t  signs[11*11*11];		        // 0 = occ, 1 = free
+    std::vector<uint16_t> distance_masks;		// Manhattan distance masks
+    std::vector<uint8_t>  signs;		        // 0 = occ, 1 = free
 };
 
 class TSDF3D16
@@ -54,6 +47,7 @@ public:
 			   float minY, float maxY, 
 			   float minZ, float maxZ, 
 			   float resolution, 
+			   int kernelSize,
 			   int occMinHits,
 			   int binsAz,
                int binsEl,
@@ -76,9 +70,8 @@ public:
         m_numBins = m_binsAz * m_binsEl;
         m_shadowRadiusMd = shadowRadius;
         m_distanceMode = distanceMode;
-
-		m_azMultiplier = m_binsAz / (2.0f*M_PI);
-    	m_elMultiplier = m_binsEl / M_PI;
+		m_kernelSize = kernelSize; 
+    	m_kernelRadius = (kernelSize - 1) / 2;
 
 		initDirectionalKernels();
 
@@ -108,6 +101,11 @@ public:
 
 		m_grid.exportSubgridToCSV(filename, subsampling_factor);
 	}
+
+	void exportMesh(const std::string& filename, float iso_level)
+    {
+        m_grid.exportMesh(filename, iso_level, m_occMinHits);
+    }
 
 	virtual inline bool isIntoGrid(const float &x, const float &y, const float &z)
 	{
@@ -165,7 +163,7 @@ public:
                        float maxAbs)
 	{
 		std::vector<pcl::PointXYZ> out;
-		out.reserve(cloud.size()); // evitar realocaciones
+		out.reserve(cloud.size()); 
 
 		// Matriz de rotación precalculada (radianes)
 		const float sr = std::sin(roll),  cr = std::cos(roll);
@@ -214,45 +212,36 @@ public:
 		}
 
 		// Applies the pre-computed kernel to all grid cells centered in the cloud points 
-		const float step = 10*m_resolution;
-		const int occMinHits_local = m_occMinHits;
-		const int binsAz_local = m_binsAz;
-        const int binsEl_local = m_binsEl;
-        const float azMultiplier_local = m_azMultiplier;
-        const float elMultiplier_local = m_elMultiplier;
+		const float step = m_kernelRadius * m_resolution;
 
 		#pragma omp parallel for num_threads(16) shared(m_dirKernels, m_grid) 
 		for(uint32_t i=0; i<cloud.size(); i++)
 		{
 			
-			if(!isIntoGrid(cloud[i].x-step, cloud[i].y-step, cloud[i].z-step) || 
-			   !isIntoGrid(cloud[i].x+step, cloud[i].y+step, cloud[i].z+step))
+			if(!isIntoGrid(cloud[i].x - step*2, cloud[i].y - step*2, cloud[i].z - step*2) || 
+			   !isIntoGrid(cloud[i].x + step*2, cloud[i].y + step*2, cloud[i].z + step*2))
 				continue;
 
 			// Select kernel by ray direction
 			Eigen::Vector3f dir(cloud[i].x, cloud[i].y, cloud[i].z);
-			const DirectionalKernel& DK = m_dirKernels[dirToBin(dir, 
-                                                                binsAz_local, 
-                                                                binsEl_local, 
-                                                                azMultiplier_local, 
-                                                                elMultiplier_local)];
+			const DirectionalKernel& DK = m_dirKernels[dirToBin(dir)];
 
 			int xi, yi, zi, k = 0;
 			float x, y, z;
-			for(zi=0, z=cloud[i].z-step; zi<11; zi++, z+=m_resolution)
-				for(yi=0, y=cloud[i].y-step; yi<11; yi++, y+=m_resolution){
+			for(zi=0, z=cloud[i].z-step; zi<m_kernelSize; zi++, z+=m_resolution)
+				for(yi=0, y=cloud[i].y-step; yi<m_kernelSize; yi++, y+=m_resolution){
 					GRID16::Iterator it = m_grid.getIterator(cloud[i].x-step,y,z);
-					for(xi=0, x=cloud[i].x-step; xi<11; xi++, x+=m_resolution,++it, ++k)
+					for(xi=0, x=cloud[i].x-step; xi<m_kernelSize; xi++, x+=m_resolution,++it, ++k)
 					{						
 						VoxelData &v = *it;
 						uint16_t old_mask = v.d;
 						uint16_t new_mask = old_mask & DK.distance_masks[k];
 						if (new_mask != old_mask) v.d = new_mask;
 
-						if(DK.signs[k] == 0 && v.hits < occMinHits_local) 
+						if(DK.signs[k] == 0 && v.hits < m_occMinHits) 
 						{
 							++v.hits;
-							if (v.hits == occMinHits_local)
+							if (v.hits == m_occMinHits)
 								v.s &= uint8_t(~0x01);
 						}
 					}
@@ -323,19 +312,17 @@ protected:
 	float m_minX, m_minY, m_minZ;
 	float m_resolution, m_oneDivRes;	
 	int m_occMinHits;
+	int m_kernelSize;
+    int m_kernelRadius;
 	int m_binsAz;
     int m_binsEl;
     int m_numBins;
     int m_shadowRadiusMd;
     std::string m_distanceMode;
-	float m_azMultiplier;
-    float m_elMultiplier;
 
 	// Directional kernels
 	std::vector<DirectionalKernel> m_dirKernels;
-	inline int dirToBin(const Eigen::Vector3f &v, 
-                        int binsAz, int binsEl, 
-                        float azMultiplier, float elMultiplier) const;
+	inline int dirToBin(const Eigen::Vector3f &v) const;
 	void initDirectionalKernels();
 
 	std::map<int, uint16_t> m_r_squared_to_mask16;
@@ -343,9 +330,7 @@ protected:
 };
 
 // Map direction to bin index (azimuth × elevation)
-inline int TSDF3D16::dirToBin(const Eigen::Vector3f &v, 
-                                    int binsAz, int binsEl, 
-                                    float azMultiplier, float elMultiplier) const
+inline int TSDF3D16::dirToBin(const Eigen::Vector3f &v) const
 {
 	float az = std::atan2(v.y(), v.x());
 	if (az < 0) 
@@ -354,13 +339,13 @@ inline int TSDF3D16::dirToBin(const Eigen::Vector3f &v,
 	}
 
 	float el  = std::asin(v.z() / v.norm());
-	int   baz = int(az * azMultiplier);
-    int   bel = int((el + M_PI/2) * elMultiplier);
+	int   baz = int(az * m_binsAz / (2.0f*M_PI));
+    int   bel = int((el + M_PI/2) * m_binsEl / M_PI);
 
-    bel = std::clamp(bel, 0, binsEl - 1);
-    baz = std::clamp(baz, 0, binsAz - 1);
+    bel = std::clamp(bel, 0, m_binsEl - 1);
+    baz = std::clamp(baz, 0, m_binsAz - 1);
 
-    return bel*binsAz + baz;    
+    return bel*m_binsAz + baz;    
 }
 
 
@@ -372,9 +357,9 @@ inline void TSDF3D16::initDirectionalKernels()
         if (m_r_squared_to_mask16.empty())
         {
             std::set<int> unique_r_squared;
-            for (int z = -5; z <= 5; ++z) 
-                for (int y = -5; y <= 5; ++y)
-                    for (int x = -5; x <= 5; ++x)
+            for (int z = -m_kernelRadius; z <= m_kernelRadius; ++z) 
+                for (int y = -m_kernelRadius; y <= m_kernelRadius; ++y)
+                    for (int x = -m_kernelRadius; x <= m_kernelRadius; ++x)
                     {
                         unique_r_squared.insert(x*x + y*y + z*z);
                     }
@@ -411,6 +396,8 @@ inline void TSDF3D16::initDirectionalKernels()
 	// --- Kernel Generation ---
     m_dirKernels.resize(m_numBins);
 
+	const int kernel_total_voxels = m_kernelSize * m_kernelSize * m_kernelSize;
+
     auto binToDir = [&](int az,int el) // <-- Añadido [&] para capturar 'this'
     {            
         float azr = (az+0.5f)*2.0f*M_PI / m_binsAz;
@@ -425,10 +412,13 @@ inline void TSDF3D16::initDirectionalKernels()
         DirectionalKernel& DK = m_dirKernels[el*m_binsAz+az]; 
         Eigen::Vector3f dir = binToDir(az,el).normalized();
 
+		DK.distance_masks.resize(kernel_total_voxels);
+        DK.signs.resize(kernel_total_voxels);
+		
         int k=0;
-        for(int z=-5;z<=5;++z) 
-        for(int y=-5;y<=5;++y)
-        for(int x=-5;x<=5;++x,++k)
+        for(int z=-m_kernelRadius;z<=m_kernelRadius;++z) 
+        for(int y=-m_kernelRadius;y<=m_kernelRadius;++y)
+        for(int x=-m_kernelRadius;x<=m_kernelRadius;++x,++k)
         {       
             const float R_E = float(m_shadowRadiusMd); 
             float re2 = float(x*x + y*y + z*z); 
@@ -465,14 +455,14 @@ inline void TSDF3D16::initDirectionalKernels()
             std::cout << " (Y+) \n" << "  ^ \n" << "  | \n";
             
             int z_central = 0;
-            int iz = z_central + 5;
+            int iz = z_central + m_kernelRadius;
             
-            for(int y = 5; y >= -5; --y) { 
-                int iy = y + 5; 
+            for(int y = m_kernelRadius; y >= -m_kernelRadius; --y) { 
+                int iy = y + m_kernelRadius; 
                 std::cout << std::setw(2) << y << " | "; 
-                for(int x = -5; x <= 5; ++x) { 
-                    int ix = x + 5;
-                    int k_idx = (iz * 11 * 11) + (iy * 11) + ix;
+                for(int x = -m_kernelRadius; x <= m_kernelRadius; ++x) { 
+                    int ix = x + m_kernelRadius;
+                    int k_idx = (iz * m_kernelSize * m_kernelSize) + (iy * m_kernelSize) + ix;
                     uint16_t mask = DK.distance_masks[k_idx];
                     int rank = std::bitset<16>(mask).count();
                     uint8_t sign = DK.signs[k_idx];
@@ -484,7 +474,7 @@ inline void TSDF3D16::initDirectionalKernels()
             
             std::cout << "   " << std::string(60, '-') << "> (X+)" << std::endl;
             std::cout << "     ";
-            for(int x = -5; x <= 5; ++x) {
+            for(int x = -m_kernelRadius; x <= m_kernelRadius; ++x) {
                 std::cout << " " << std::setw(3) << x;
             }
             std::cout << "\n---------------------------------------------------------------------\n" << std::endl;

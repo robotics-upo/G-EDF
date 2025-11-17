@@ -115,11 +115,18 @@ To feed data, simply play a recorded ROS 2 bag in another terminal:
 ## 4. Output data and Services
 
 The node provides ROS 2 services to export the reconstructed map:
+
+- Mesh (STL)
+   ```bash
+   ros2 service call /save_grid_mesh std_srvs/srv/Trigger "{}"
+   ```
+
 - Voxel Point Cloud
    ```bash
    ros2 service call /save_grid_ply std_srvs/srv/Trigger "{}"   # grid_data.ply
    ros2 service call /save_grid_pcd std_srvs/srv/Trigger "{}"   # grid_data.pcd
    ```
+
 - Voxel Statistics (CSV)
    ```bash
    ros2 service call /save_grid_csv std_srvs/srv/Trigger "{}"

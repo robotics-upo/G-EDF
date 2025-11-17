@@ -5,14 +5,23 @@
 #include <algorithm>  
 #include <bitset>
 #include <stdint.h>
-
 #include <cmath>
+
+// PCL
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
 #include <clocale>
 
+// Mesh
+#include <vtkSmartPointer.h>
+#include <vtkImageData.h>
+#include <vtkMarchingCubes.h>
+#include <vtkXMLPolyDataWriter.h>
+#include <vtkSTLWriter.h>
+#include <vtkAppendPolyData.h>
+#include <vtkImageGaussianSmooth.h>
 
 struct VoxelData
 {
@@ -29,8 +38,9 @@ class GRID16
 
 	struct Iterator
     {
-        Iterator(VoxelData **grid, uint32_t i, uint32_t base, uint32_t j, uint32_t cellSizeX) 
+        Iterator(GRID16* parent, VoxelData **grid, uint32_t i, uint32_t base, uint32_t j, uint32_t cellSizeX) 
         { 
+            _parent = parent;
             _grid = grid; 
             _i = i;
             _j = j;
@@ -51,10 +61,18 @@ class GRID16
         }
 
         VoxelData &operator*() { 
+            if (_curr == _parent->_dummy) {
+                return _parent->_garbage; 
+            }
             return _curr[_j+_base]; 
         }
 
-        VoxelData *operator->() { return _curr + _j + _base; }
+        VoxelData *operator->() { 
+            if (_curr == _parent->_dummy) {
+                return &(_parent->_garbage);
+            }
+            return _curr + _j + _base; 
+        }
 
         Iterator& operator++() 
         { 
@@ -69,7 +87,7 @@ class GRID16
         }  
 
         protected:
-
+        GRID16* _parent;
         VoxelData **_grid;
         VoxelData *_curr;
         uint32_t _i, _j, _base, _cellSizeX;
@@ -124,13 +142,18 @@ class GRID16
         _buffer = (VoxelData *)malloc(_maxCells*_cellSize*sizeof(VoxelData)); // Circular buffer to store all cell masks
         std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(VoxelData));     // Init the buffer to longest distance
         for(int i=0; i<_maxCells; i++)
-			_buffer[i*_cellSize] = VoxelData{static_cast<uint64_t>(_gridSize), 0xFF, 0xFF};
+        {
+			// _buffer[i*_cellSize] = VoxelData{static_cast<uint64_t>(_gridSize), 0xFF, 0xFF};
+            uint32_t* control_index_ptr = reinterpret_cast<uint32_t*>(&_buffer[i*_cellSize]);
+            *control_index_ptr = _gridSize;
+        }
         _cellIndex = 0;
 
 		_dummy = (VoxelData*)malloc(_cellSize * sizeof(VoxelData));
 		std::memset(_dummy, -1, _cellSize * sizeof(VoxelData));
-		_dummy[0] = VoxelData{static_cast<uint64_t>(_gridSize), 0xFF, 0xFF};
-
+		// _dummy[0] = VoxelData{static_cast<uint64_t>(_gridSize), 0xFF, 0xFF};
+        uint32_t* dummy_index_ptr = reinterpret_cast<uint32_t*>(&_dummy[0]);
+        *dummy_index_ptr = _gridSize;
         _grid = (VoxelData**)malloc(_gridSize * sizeof(VoxelData*));
         for (uint32_t k = 0; k < _gridSize; ++k) _grid[k] = _dummy;
     }    
@@ -151,8 +174,13 @@ class GRID16
 	{
 		for (uint32_t k = 0; k < _gridSize; ++k) _grid[k] = _dummy; // Set pointers to dummy
 		std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(VoxelData));     // Init the buffer to longest distance
-        for(int i=0; i<_maxCells; i++)
-			_buffer[i*_cellSize] = VoxelData{static_cast<uint64_t>(_gridSize), 0xFF, 0xFF};
+        // for(int i=0; i<_maxCells; i++)
+		// 	_buffer[i*_cellSize] = VoxelData{static_cast<uint64_t>(_gridSize), 0xFF, 0xFF};
+        for(uint64_t i=0; i<_maxCells; i++)
+        {
+            uint32_t* control_index_ptr = reinterpret_cast<uint32_t*>(&_buffer[i*_cellSize]);
+            *control_index_ptr = _gridSize;
+        }
         _cellIndex = 0;
 	}
 
@@ -166,8 +194,13 @@ class GRID16
 		if( _grid[i] == _dummy)  
 		{
 			_grid[i] = _buffer + (_cellIndex % _maxCells)*_cellSize;
-            if (_grid[i][0].d != _gridSize) {
-                _grid[_grid[i][0].d] = _dummy;
+            // if (_grid[i][0].d != _gridSize) {
+            //     _grid[_grid[i][0].d] = _dummy;
+            // }
+            uint32_t* old_index_ptr = reinterpret_cast<uint32_t*>(&_grid[i][0]);
+            
+            if (*old_index_ptr != _gridSize) {
+                _grid[*old_index_ptr] = _dummy;
             }
             VoxelData* cell = _grid[i];
             for (uint16_t j = 1; j < _cellSize; ++j) {
@@ -175,7 +208,11 @@ class GRID16
                 cell[j].s    = 1u;
                 cell[j].hits = 0u;
             }
-            cell[0] = VoxelData{static_cast<uint64_t>(i), 0xFF, 0xFF};
+            // cell[0] = VoxelData{static_cast<uint64_t>(i), 0xFF, 0xFF};
+
+            uint32_t* control_index_ptr = reinterpret_cast<uint32_t*>(&cell[0]);
+            *control_index_ptr = i;
+
             // if (onCellAllocated) onCellAllocated(i);
 			_cellIndex++;
 		}
@@ -216,9 +253,9 @@ class GRID16
 		uint32_t int_x = (uint32_t)x, int_y = (uint32_t)y, int_z = (uint32_t)z;
         uint32_t i = int_x + int_y*_gridStepY + int_z*_gridStepZ;
 
-		return Iterator(_grid, i, 1 + (uint32_t)((y-int_y)*_oneDivRes)*_cellStepY + (uint32_t)((z-int_z)*_oneDivRes)*_cellStepZ, (uint32_t)((x-int_x)*_oneDivRes), _cellSizeX);
+		return Iterator(this, _grid, i, 1 + (uint32_t)((y-int_y)*_oneDivRes)*_cellStepY + (uint32_t)((z-int_z)*_oneDivRes)*_cellStepZ, (uint32_t)((x-int_x)*_oneDivRes), _cellSizeX);
 	}
-
+    
     void exportGridToPCD(const std::string& filename, int subsampling_factor)
         {
         using PointT = pcl::PointXYZ;
@@ -266,7 +303,6 @@ class GRID16
         pcl::io::savePCDFileBinary(filename, *cloud);
         std::cout << "[GRID16] PCD exported: " << filename << "\n";
     }
-
     
     void exportGridToPLY(const std::string& filename, int subsampling_factor)
         {
@@ -315,7 +351,6 @@ class GRID16
         pcl::io::savePLYFileBinary(filename, *cloud);
         std::cout << "[GRID16] PLY exported: " << filename << "\n";
     }
-
 
     void exportSubgridToCSV(const std::string& filename, int subsampling_factor)
         {
@@ -381,7 +416,8 @@ class GRID16
                                 const uint32_t j = 1u + vx + vy * _cellStepY + vz * _cellStepZ;
 
                                 const uint64_t d_manhattan = __builtin_popcount(cell[j].d);
-                                const uint32_t s    = static_cast<uint32_t>(cell[j].s);
+                                // const uint32_t s    = static_cast<uint32_t>(cell[j].s);
+                                const uint32_t s = (cell[j].s & 0x01u);
                                 const uint32_t hits = static_cast<uint32_t>(cell[j].hits);
 
                                 // >>> CAMBIO: escribir el CENTRO del vóxel en el CSV <<<
@@ -420,6 +456,107 @@ class GRID16
         }
     }
 
+    void exportMesh(const std::string& filename, float iso_level, int occ_min_hits){
+        RCLCPP_INFO(rclcpp::get_logger("GRID16_Mesh"), "Starting mesh extraction...");
+
+        vtkSmartPointer<vtkAppendPolyData> appender = 
+            vtkSmartPointer<vtkAppendPolyData>::New();
+
+        const float BAND = 0.1f * _cellRes;
+
+        for (uint32_t cz = 0; cz < _gridSizeZ; ++cz)
+        for (uint32_t cy = 0; cy < _gridSizeY; ++cy)
+        for (uint32_t cx = 0; cx < _gridSizeX; ++cx)
+        {
+            const uint32_t i = cx + cy * _gridStepY + cz * _gridStepZ;
+            VoxelData* cell = _grid[i];
+
+            if (cell == _dummy) continue;
+
+            vtkSmartPointer<vtkImageData> image = vtkSmartPointer<vtkImageData>::New();
+            image->SetDimensions(_cellSizeX + 1, _cellSizeY + 1, _cellSizeZ + 1); 
+            image->SetSpacing(_cellRes, _cellRes, _cellRes);
+            const float x0 = _minX + static_cast<float>(cx);
+            const float y0 = _minY + static_cast<float>(cy);
+            const float z0 = _minZ + static_cast<float>(cz);
+            image->SetOrigin(x0, y0, z0);
+            image->AllocateScalars(VTK_FLOAT, 1);
+            
+            float *dest = static_cast<float*>(image->GetScalarPointer());
+            bool has_occupied_voxels = false;
+
+            for (uint32_t vz = 0; vz < _cellSizeZ + 1; ++vz)
+            for (uint32_t vy = 0; vy < _cellSizeY + 1; ++vy)
+            for (uint32_t vx = 0; vx < _cellSizeX + 1; ++vx)
+            {
+                VoxelData vox = this->read(x0 + vx * _cellRes, 
+                                           y0 + vy * _cellRes, 
+                                           z0 + vz * _cellRes);
+
+                const uint64_t dist_rank = __builtin_popcount(vox.d);
+                const bool enough_hits = (vox.hits >= occ_min_hits);
+                const bool occupied = ((vox.s & 0x01u) == 0);
+                const bool is_surface = (dist_rank <= 1); 
+
+                float sdf_value;
+                if (!enough_hits) {
+                    sdf_value = +BAND; 
+                } else if (occupied) {
+                    sdf_value = -BAND; 
+                    has_occupied_voxels = true;
+                } else {
+                    sdf_value = +BAND; 
+                }
+                
+                dest[vx + vy * (_cellSizeX + 1) + vz * (_cellSizeX + 1) * (_cellSizeY + 1)] = sdf_value;
+            }
+
+            if (has_occupied_voxels)
+            {
+                auto smoother = vtkSmartPointer<vtkImageGaussianSmooth>::New();
+                smoother->SetInputData(image);
+                smoother->SetStandardDeviation(1.0);
+                smoother->Update();
+
+                auto mc = vtkSmartPointer<vtkMarchingCubes>::New();
+                mc->SetInputConnection(smoother->GetOutputPort());
+                mc->SetValue(0, iso_level); 
+                mc->Update();
+
+                appender->AddInputData(mc->GetOutput());
+            }
+        } 
+
+        RCLCPP_INFO(rclcpp::get_logger("GRID16_Mesh"), "Joining cell meshes...");
+        appender->Update();
+
+        auto ext_pos = filename.find_last_of('.');
+        std::string ext = (ext_pos==std::string::npos) ? "" : filename.substr(ext_pos+1);
+
+        if (ext == "stl") {
+            auto writer = vtkSmartPointer<vtkSTLWriter>::New();
+            writer->SetFileName(filename.c_str());
+            writer->SetInputData(appender->GetOutput());
+            writer->SetFileTypeToBinary();  
+            if (!writer->Write()) {
+              throw std::runtime_error("VTK STL writer failed to write mesh.");
+            }
+        }
+        else if (ext == "vtp") {
+            auto writer = vtkSmartPointer<vtkXMLPolyDataWriter>::New();
+            writer->SetFileName(filename.c_str());
+            writer->SetInputData(appender->GetOutput());
+            if (!writer->Write()) {
+              throw std::runtime_error("VTK XML writer failed to write mesh.");
+            }
+        }
+        else {
+            throw std::invalid_argument("Unsupported file extension: " + ext);
+        }
+        
+        RCLCPP_INFO(rclcpp::get_logger("GRID16_Mesh"), "Mesh saved to %s", filename.c_str());
+    }
+
 
 protected:
 
@@ -431,7 +568,6 @@ protected:
     uint64_t _maxCells, _cellSize, _cellIndex;
     VoxelData *_buffer;
 	VoxelData *_dummy;
-
 	VoxelData _garbage;
 };
 

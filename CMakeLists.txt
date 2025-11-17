@@ -67,7 +67,6 @@ target_link_libraries(db_tsdf_node
 
 target_include_directories(db_tsdf_node PRIVATE
   include
-  include/mesh
   ${Boost_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${VTK_INCLUDE_DIRS}
