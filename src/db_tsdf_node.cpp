@@ -16,6 +16,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/trigger.hpp"
+#include "std_srvs/srv/empty.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include <geometry_msgs/msg/transform_stamped.hpp> 
 
@@ -39,6 +40,7 @@ public:
         : Node(node_name)
     {
         // Parameters
+        m_debugMode         = this->declare_parameter<bool>("debug", true);
         m_inCloudTopic      = this->declare_parameter<std::string>("in_cloud", "/cloud_raw");
         m_odomFrameId       = this->declare_parameter<std::string>("odom_frame_id", "odom");
         m_useTf             = this->declare_parameter<bool>("use_tf", true);
@@ -57,12 +59,15 @@ public:
         m_maxRange          = this->declare_parameter<double>("max_range", 100.0);
         m_PcDownsampling    = this->declare_parameter<int>("pc_downsampling", 1);
         m_occMinHits        = this->declare_parameter<int>("occ_min_hits", 1);
+
         m_binsAz = this->declare_parameter<int>("bins_az", 40);
         m_binsEl = this->declare_parameter<int>("bins_el", 40);
         m_shadowRadius = this->declare_parameter<int>("shadow_radius", 6);
         m_distanceMode = this->declare_parameter<std::string>("distance_mode", "L1");
         m_kernelSize   = this->declare_parameter<int>("kernel_size", 11);
         
+        m_trainingPoints = this->declare_parameter<int>("training_points", 500);
+
         if (m_kernelSize % 2 == 0) {
             RCLCPP_WARN(this->get_logger(), "Kernel size must be odd! Forcing %d -> %d.", m_kernelSize, m_kernelSize + 1);
             m_kernelSize++;
@@ -81,12 +86,13 @@ public:
         RCLCPP_INFO(this->get_logger(), "    Occ. Min. Hits: %d", m_occMinHits);
         RCLCPP_INFO(this->get_logger(), "    Shadow Radius:  %d voxels", m_shadowRadius);
         RCLCPP_INFO(this->get_logger(), "    Distance Mode:  %s", m_distanceMode.c_str());
-        RCLCPP_INFO(this->get_logger(), "    Kernel Size:    11x11x11 (Fixed)");
 
         RCLCPP_INFO(this->get_logger(), "  Filtering Params:");
         RCLCPP_INFO(this->get_logger(), "    Downsampling:   1 in every %d points", m_PcDownsampling);
         RCLCPP_INFO(this->get_logger(), "    Range (Min/Max):  %.1f m / %.1f m", m_minRange, m_maxRange);
         
+        RCLCPP_INFO(this->get_logger(), "  Gaussiam training Params:");
+        RCLCPP_INFO(this->get_logger(), "    Training Points: %d", m_trainingPoints);
         RCLCPP_INFO(this->get_logger(), "------------------------------------------------------");
 
         // TF buffer and listener
@@ -116,6 +122,12 @@ public:
             RCLCPP_INFO(this->get_logger(), "Using Generic TF Mode (listening to /tf)");
         }
 
+        m_saveGridSrv = this->create_service<std_srvs::srv::Empty>("save_grid", 
+            std::bind(&TSDFNode::saveGrid, this, std::placeholders::_1, std::placeholders::_2));
+            
+        m_saveGaussianMeshSrv = this->create_service<std_srvs::srv::Trigger>("/save_gaussian_mesh", 
+            std::bind(&TSDFNode::saveGaussianMesh, this, std::placeholders::_1, std::placeholders::_2));
+
         save_service_pcd_ = this->create_service<std_srvs::srv::Trigger>( "/save_grid_pcd",
             std::bind(&TSDFNode::saveGridPCD, this, std::placeholders::_1, std::placeholders::_2));
 
@@ -129,6 +141,8 @@ public:
             std::bind(&TSDFNode::saveGridMesh, this, std::placeholders::_1, std::placeholders::_2));
 
         // TDF grid allocation
+        m_grid3d.setTrainingPoints(m_trainingPoints);
+        m_grid3d.setDebugMode(m_debugMode);
         m_grid3d.setup(m_tdfGridSizeX_low, m_tdfGridSizeX_high,
                     m_tdfGridSizeY_low, m_tdfGridSizeY_high,
                     m_tdfGridSizeZ_low, m_tdfGridSizeZ_high,
@@ -147,6 +161,7 @@ public:
                 << fabs(m_tdfGridSizeY_high - m_tdfGridSizeY_low) << " x " 
                 << fabs(m_tdfGridSizeZ_high - m_tdfGridSizeZ_low) << "." 
                 << std::endl;
+        RCLCPP_INFO(this->get_logger(), "Node initialized.");
     }
 
     ~TSDFNode(){
@@ -166,6 +181,8 @@ private:
     int m_binsAz;
     int m_binsEl;
     int m_shadowRadius;
+    int m_trainingPoints;
+    int m_debugMode;
     std::string m_distanceMode;
     std::string m_inTfTopic; // For legacy mode
     bool m_useTfTopic{false};  // For legacy mode
@@ -191,6 +208,8 @@ private:
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_service_ply_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_service_csv_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_service_mesh_;
+    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr m_saveGridSrv;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr m_saveGaussianMeshSrv;
 
     // TF management
     std::shared_ptr<tf2_ros::Buffer> m_tfBuffer;
@@ -208,13 +227,20 @@ private:
                            std::shared_ptr<std_srvs::srv::Trigger::Response> response);
     void saveGridMesh(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                            std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+    void saveGrid(const std::shared_ptr<std_srvs::srv::Empty::Request> request,
+                  std::shared_ptr<std_srvs::srv::Empty::Response> response);
+                  
+    void saveGaussianMesh(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                          std::shared_ptr<std_srvs::srv::Trigger::Response> response);
 
 };
 
 
 void TSDFNode::pointcloudCallback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& cloud)
 {
+    // 1. Point Cloud Conversion
     auto start = std::chrono::steady_clock::now();
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_pcl(new pcl::PointCloud<pcl::PointXYZ>);
     static size_t counter = 0;
     counter++;
 
@@ -235,6 +261,7 @@ void TSDFNode::pointcloudCallback(const sensor_msgs::msg::PointCloud2::ConstShar
                 RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                                     "No TF received yet on LEGACY topic %s -> discarding cloud",
                                     m_inTfTopic.c_str());
+                return; // Resume if returning early
                 return;
             }
             
@@ -255,6 +282,7 @@ void TSDFNode::pointcloudCallback(const sensor_msgs::msg::PointCloud2::ConstShar
                 RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                                     "Best legacy TF deltaT (%.3f ms) > max_skew -> discarding cloud",
                                     best_dt.seconds()*1e3);
+                return; // Resume if returning early
                 return;
             }
             T = getTransformMatrix(*best_it);
@@ -276,6 +304,7 @@ void TSDFNode::pointcloudCallback(const sensor_msgs::msg::PointCloud2::ConstShar
                     "Could not transform %s to %s: %s",
                     cloud->header.frame_id.c_str(), m_odomFrameId.c_str(), ex.what()
                 );
+                return; // Resume if returning early
                 return;
             }
         }
@@ -316,7 +345,53 @@ void TSDFNode::pointcloudCallback(const sensor_msgs::msg::PointCloud2::ConstShar
     
     auto end = std::chrono::steady_clock::now();
     double ms = std::chrono::duration<double,std::milli>(end - start).count();
-    RCLCPP_INFO(this->get_logger(), "Received frame #%zu · time = %.3f ms", counter, ms);
+    
+    // Calculate training rate
+    static auto last_log_time = std::chrono::steady_clock::now();
+    static size_t last_processed_count = 0;
+    auto now = std::chrono::steady_clock::now();
+    double dt = std::chrono::duration<double>(now - last_log_time).count();
+    
+    if (m_debugMode) {
+        RCLCPP_INFO(this->get_logger(), "Received frame #%zu · time = %.3f ms", counter, ms);
+    }
+
+    // Update frame
+    m_grid3d.setCurrentFrame(counter);
+}
+
+void TSDFNode::saveGaussianMesh(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                                std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+    RCLCPP_INFO(this->get_logger(), "Received request to save Gaussian Mesh. Starting in background...");
+    
+    std::thread([this]() {
+        try {
+            std::string filename = "gaussian_mesh.stl";
+            RCLCPP_INFO(this->get_logger(), "Saving Gaussian mesh to %s...", filename.c_str());
+            
+            // Flush and export
+            m_grid3d.exportGaussianMesh(filename);
+            
+            RCLCPP_INFO(this->get_logger(), "Gaussian mesh saved.");
+        } catch (const std::exception &e) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to save Gaussian mesh: %s", e.what());
+        }
+    }).detach();
+
+    response->success = true;
+    response->message = "Gaussian mesh export started in background.";
+}
+
+void TSDFNode::saveGrid(const std::shared_ptr<std_srvs::srv::Empty::Request> request,
+                        std::shared_ptr<std_srvs::srv::Empty::Response> response)
+{
+    (void)request;
+    (void)response;
+    std::string filename = "grid.ply";
+    RCLCPP_INFO(this->get_logger(), "Saving Grid to %s...", filename.c_str());
+    m_grid3d.exportGridToPLY(filename, 1);
+    RCLCPP_INFO(this->get_logger(), "Grid saved.");
 }
 
 

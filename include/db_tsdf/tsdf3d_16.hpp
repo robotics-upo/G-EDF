@@ -5,8 +5,6 @@
 #include <bitset>
 #include <db_tsdf/df3d.hpp>
 #include "nav_msgs/msg/occupancy_grid.hpp"
-#include <boost/thread.hpp>
-#include <boost/chrono.hpp>
 #include "rclcpp/clock.hpp"
 #include <db_tsdf/grid_16.hpp>
 
@@ -86,25 +84,43 @@ public:
 
 	void exportGridToPCD(const std::string& filename, int subsampling_factor)
 	{
-
 		m_grid.exportGridToPCD(filename, subsampling_factor);
 	}
 
 	void exportGridToPLY(const std::string& filename, int subsampling_factor)
 	{
-
 		m_grid.exportGridToPLY(filename, subsampling_factor);
 	}
 
 	void exportSubgridToCSV(const std::string& filename, int subsampling_factor)
 	{
-
 		m_grid.exportSubgridToCSV(filename, subsampling_factor);
 	}
 
-	void exportMesh(const std::string& filename, float iso_level)
+    void exportMesh(const std::string& filename, float iso_level)
     {
         m_grid.exportMesh(filename, iso_level, m_occMinHits);
+    }
+    
+    void exportGaussianMesh(const std::string& filename) 
+	{ 
+		m_grid.exportGaussianMesh(filename); 
+	}
+    
+    void setCurrentFrame(uint32_t frame) 
+	{ 
+		m_grid.setCurrentFrame(frame); 
+	}
+
+	void setTrainingPoints(int n) 
+	{
+        m_grid.setTrainingPoints(n);
+    }
+
+	void setDebugMode(bool enabled) 
+    {
+        m_debugMode = enabled;      
+        m_grid.setDebugMode(enabled); 
     }
 
 	virtual inline bool isIntoGrid(const float &x, const float &y, const float &z)
@@ -214,24 +230,35 @@ public:
 		// Applies the pre-computed kernel to all grid cells centered in the cloud points 
 		const float step = m_kernelRadius * m_resolution;
 
+		// const float half_res = m_resolution * 0.5f;
+        // const float dist_to_int8_scale = 254.0f * m_oneDivRes;
+
+		// const int center_k = (m_kernelRadius * m_kernelSize * m_kernelSize) + 
+        //                      (m_kernelRadius * m_kernelSize) + 
+        //                      m_kernelRadius;
+
 		#pragma omp parallel for num_threads(16) shared(m_dirKernels, m_grid) 
 		for(uint32_t i=0; i<cloud.size(); i++)
 		{
 			
-			if(!isIntoGrid(cloud[i].x - step*2, cloud[i].y - step*2, cloud[i].z - step*2) || 
-			   !isIntoGrid(cloud[i].x + step*2, cloud[i].y + step*2, cloud[i].z + step*2))
+			const float px = cloud[i].x;
+            const float py = cloud[i].y;
+            const float pz = cloud[i].z;
+			
+			if(!isIntoGrid(px - step*2, py - step*2, pz - step*2) || 
+			   !isIntoGrid(px + step*2, py + step*2, pz + step*2))
 				continue;
 
 			// Select kernel by ray direction
-			Eigen::Vector3f dir(cloud[i].x, cloud[i].y, cloud[i].z);
+			Eigen::Vector3f dir(px, py, pz);
 			const DirectionalKernel& DK = m_dirKernels[dirToBin(dir)];
 
 			int xi, yi, zi, k = 0;
 			float x, y, z;
-			for(zi=0, z=cloud[i].z-step; zi<m_kernelSize; zi++, z+=m_resolution)
-				for(yi=0, y=cloud[i].y-step; yi<m_kernelSize; yi++, y+=m_resolution){
-					GRID16::Iterator it = m_grid.getIterator(cloud[i].x-step,y,z);
-					for(xi=0, x=cloud[i].x-step; xi<m_kernelSize; xi++, x+=m_resolution,++it, ++k)
+			for(zi=0, z=pz-step; zi<m_kernelSize; zi++, z+=m_resolution)
+				for(yi=0, y=py-step; yi<m_kernelSize; yi++, y+=m_resolution){
+					GRID16::Iterator it = m_grid.getIterator(px-step,y,z);
+					for(xi=0, x=px-step; xi<m_kernelSize; xi++, x+=m_resolution,++it, ++k)
 					{						
 						VoxelData &v = *it;
 						uint16_t old_mask = v.d;
@@ -240,7 +267,29 @@ public:
 
 						if(DK.signs[k] == 0 && v.hits < m_occMinHits) 
 						{
+							// if (k == center_k)
+							// {
+							// 	if (v.posHits < 255) 
+							// 	{
+							// 		// Calcular diff geométrica
+							// 		float dx = px - (x + half_res);
+							// 		float dy = py - (y + half_res);
+							// 		float dz = pz - (z + half_res);
+							// 		// Convertir a int8 (-127..127)
+							// 		float targetX = dx * dist_to_int8_scale;
+							// 		float targetY = dy * dist_to_int8_scale;
+							// 		float targetZ = dz * dist_to_int8_scale;
+							// 		// Media incremental
+							// 		float alpha = 1.0f / (static_cast<float>(v.posHits) + 1.0f);
+							// 		v.offX += (int8_t)((targetX - v.offX) * alpha);
+							// 		v.offY += (int8_t)((targetY - v.offY) * alpha);
+							// 		v.offZ += (int8_t)((targetZ - v.offZ) * alpha);
+							// 		v.posHits++;
+							// 	}
+							// }
+
 							++v.hits;
+							
 							if (v.hits == m_occMinHits)
 								v.s &= uint8_t(~0x01);
 						}
@@ -318,6 +367,7 @@ protected:
     int m_binsEl;
     int m_numBins;
     int m_shadowRadiusMd;
+	bool m_debugMode = true;
     std::string m_distanceMode;
 
 	// Directional kernels
@@ -353,8 +403,12 @@ inline void TSDF3D16::initDirectionalKernels()
 {
     if (m_distanceMode == "L2")
     {
-        std::cout << "--- [TSDF3D16] Generating 16-bit L2 (Euclidean) distance LUT..." << std::endl;
-        if (m_r_squared_to_mask16.empty())
+        if (m_debugMode)
+		{ 
+			std::cout << "--- [TSDF3D16] Generating 16-bit L2 (Euclidean) distance LUT..." << std::endl;
+		}
+
+		if (m_r_squared_to_mask16.empty())
         {
             std::set<int> unique_r_squared;
             for (int z = -m_kernelRadius; z <= m_kernelRadius; ++z) 
@@ -367,25 +421,36 @@ inline void TSDF3D16::initDirectionalKernels()
             m_r_squared_to_mask16.clear();
             uint16_t rank = 0; 
             
-            std::cout << "---Rank -> L2 Distance (Voxels)" << std::endl;
-            for (int r2 : unique_r_squared)
+			if (m_debugMode)
+			{
+            	std::cout << "---Rank -> L2 Distance (Voxels)" << std::endl;
+			}
+
+			for (int r2 : unique_r_squared)
             {
                 uint16_t mask;
                 if (rank == 0)      { mask = 0u; }
                 else if (rank < 16) { mask = (0xFFFFu >> (16 - rank)); }
                 else                { mask = 0xFFFFu; } 
                 m_r_squared_to_mask16[r2] = mask;
-                float l2_dist = std::sqrt(static_cast<float>(r2));
-                std::cout << std::setw(5) << rank << " -> " << l2_dist;
-                if (rank >= 16) { std::cout << " (Truncated to 16 bits)"; }
-                std::cout << std::endl;
-                rank++;
+                
+				if (m_debugMode)
+				{
+					float l2_dist = std::sqrt(static_cast<float>(r2));
+                	std::cout << std::setw(5) << rank << " -> " << l2_dist;
+                	if (rank >= 16) { std::cout << " (Truncated to 16 bits)"; }
+                	std::cout << std::endl;
+				}
+				rank++;
             }
         }
     }
     else if (m_distanceMode == "L1")
     {
-        std::cout << "--- [TSDF3D16] Using 16-bit L1 (Manhattan) distance masks." << std::endl;
+        if (m_debugMode)
+		{
+			std::cout << "--- [TSDF3D16] Using 16-bit L1 (Manhattan) distance masks." << std::endl;
+		}
     }
     else
     {
@@ -447,7 +512,7 @@ inline void TSDF3D16::initDirectionalKernels()
         int az_ray_from_left = 0; // Azimuth bin 0 corresponde a +X
         int el_horizontal = m_binsEl / 2; // Bin de elevación central (horizontal)
 
-        if (el == el_horizontal && az == az_ray_from_left)
+        if (m_debugMode && el == el_horizontal && az == az_ray_from_left)
         {
             std::cout << "\n--- DEBUG KERNEL (+X Ray) [Z=0 Slice] ---" << std::endl;
             std::cout << "--- Rank " << m_distanceMode << " | Shadow Radius: " << m_shadowRadiusMd << " ---" << std::endl;

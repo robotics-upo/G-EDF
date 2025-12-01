@@ -1,10 +1,13 @@
 db_tsdf_node:
   ros__parameters:
 
+    debug: true
+
     # --- Input/Output & TF Parameters ---
     in_cloud: '/velodyne_points'    # Input PointCloud2 topic
     odom_frame_id: 'world'                # Odometry frame for TF lookup
     use_tf: True                         # Whether to use TF transformations
+
 
     # --- TF Mode Configuration ---
     # Defines the TF source:
@@ -13,11 +16,17 @@ db_tsdf_node:
     use_tf_topic: False
     in_tf_topic: '/gt_icp/transform'     # Topic name for Legacy Mode subscription
 
+
     # --- Point Cloud Filtering Parameters ---
     pc_downsampling: 1                   # Downsampling factor for the input cloud
     min_range: 0.0                       # Minimum sensor range (meters)
     max_range: 50.0                      # Maximum sensor range (meters)
 
+
+    # --- Gaussian Cube Parameters ---
+    training_points: 500
+
+    
     # --- TSDF Grid Definition ---
     # Defines the boundaries and resolution of the TSDF volume
     tdf_grid_res: 0.05                   # Voxel resolution (meters)

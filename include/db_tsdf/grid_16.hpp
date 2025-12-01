@@ -1,11 +1,12 @@
 #ifndef __GRID_16_HPP__
 #define __GRID_16_HPP__
 
-
 #include <algorithm>  
 #include <bitset>
 #include <stdint.h>
 #include <cmath>
+#include <omp.h>
+#include <vector>
 
 // PCL
 #include <pcl/point_cloud.h>
@@ -22,14 +23,12 @@
 #include <vtkSTLWriter.h>
 #include <vtkAppendPolyData.h>
 #include <vtkImageGaussianSmooth.h>
+#include <vtkPolyData.h>
+#include <vtkWindowedSincPolyDataFilter.h>
 
-struct VoxelData
-{
-	uint16_t d;		// Manhattan mask (bit-count -> distance)
-	uint8_t s;		// bit0: sign (0 occ / 1 free)
-	uint8_t hits;	// hit counter
-};
-static_assert(sizeof(VoxelData) == 4, "VoxelData must be 4-bytes aligned");
+// DB-TSDF
+#include "db_tsdf/voxel_cube.hpp"
+#include "db_tsdf/gaussian_cube.hpp"
 
 
 class GRID16
@@ -99,8 +98,8 @@ class GRID16
 		_grid = NULL;
         _buffer = NULL; // Circular buffer to store all cell masks
 		_garbage = VoxelData{0xFFFFu, 0xFF, 0xFF};
-		_dummy = NULL;       
-
+		_dummy = NULL;
+        _reset_template = NULL;
     }
 
     void setup(float minX, float maxX, float minY, float maxY, float minZ, float maxZ, float cellRes = 0.05, int maxCells = 100000)
@@ -113,6 +112,9 @@ class GRID16
 
 		if(_dummy != NULL)  
 			free(_dummy);
+
+        if(_reset_template != NULL)
+            free(_reset_template);
 
 		_maxX = (int)ceil(maxX);
 		_maxY = (int)ceil(maxY);
@@ -143,7 +145,6 @@ class GRID16
         std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(VoxelData));     // Init the buffer to longest distance
         for(int i=0; i<_maxCells; i++)
         {
-			// _buffer[i*_cellSize] = VoxelData{static_cast<uint64_t>(_gridSize), 0xFF, 0xFF};
             uint32_t* control_index_ptr = reinterpret_cast<uint32_t*>(&_buffer[i*_cellSize]);
             *control_index_ptr = _gridSize;
         }
@@ -151,11 +152,27 @@ class GRID16
 
 		_dummy = (VoxelData*)malloc(_cellSize * sizeof(VoxelData));
 		std::memset(_dummy, -1, _cellSize * sizeof(VoxelData));
-		// _dummy[0] = VoxelData{static_cast<uint64_t>(_gridSize), 0xFF, 0xFF};
         uint32_t* dummy_index_ptr = reinterpret_cast<uint32_t*>(&_dummy[0]);
         *dummy_index_ptr = _gridSize;
         _grid = (VoxelData**)malloc(_gridSize * sizeof(VoxelData*));
         for (uint32_t k = 0; k < _gridSize; ++k) _grid[k] = _dummy;
+        
+        // Initialize reset template for fast memcpy
+        _reset_template = (VoxelData*)malloc(_cellSize * sizeof(VoxelData));
+        // We only care about indices 1.._cellSize-1
+        for(uint64_t j=1; j<_cellSize; ++j) {
+            _reset_template[j].d = 0xFFFFu;
+            _reset_template[j].s = 1u;
+            _reset_template[j].hits = 0u;
+
+            // _reset_template[j].offX = 0;
+            // _reset_template[j].offY = 0;
+            // _reset_template[j].offZ = 0;
+            // _reset_template[j].posHits = 0;
+        }
+
+        _last_update_frame.resize(_gridSize, 0);
+        _current_frame = 0;
     }    
 
     ~GRID16(void)
@@ -167,6 +184,8 @@ class GRID16
 			free(_buffer);
 		if(_dummy != NULL)  
 			free(_dummy); 
+        if(_reset_template != NULL)
+            free(_reset_template); 
 	
     }
 
@@ -174,14 +193,14 @@ class GRID16
 	{
 		for (uint32_t k = 0; k < _gridSize; ++k) _grid[k] = _dummy; // Set pointers to dummy
 		std::memset(_buffer, -1, _maxCells*_cellSize*sizeof(VoxelData));     // Init the buffer to longest distance
-        // for(int i=0; i<_maxCells; i++)
-		// 	_buffer[i*_cellSize] = VoxelData{static_cast<uint64_t>(_gridSize), 0xFF, 0xFF};
         for(uint64_t i=0; i<_maxCells; i++)
         {
             uint32_t* control_index_ptr = reinterpret_cast<uint32_t*>(&_buffer[i*_cellSize]);
             *control_index_ptr = _gridSize;
         }
         _cellIndex = 0;
+        std::fill(_last_update_frame.begin(), _last_update_frame.end(), 0);
+        _current_frame = 0;
 	}
 
 	void allocCell(float x, float y, float z)
@@ -191,29 +210,38 @@ class GRID16
 		z -= _minZ;
 		uint32_t int_x = (uint32_t)x, int_y = (uint32_t)y, int_z = (uint32_t)z;
         uint32_t i = int_x + int_y*_gridStepY + int_z*_gridStepZ;
+        
+        // Update timestamp
+        if (i < _gridSize) {
+            _last_update_frame[i] = _current_frame;
+        }
+
 		if( _grid[i] == _dummy)  
 		{
 			_grid[i] = _buffer + (_cellIndex % _maxCells)*_cellSize;
-            // if (_grid[i][0].d != _gridSize) {
-            //     _grid[_grid[i][0].d] = _dummy;
-            // }
+            // --- DISCARDING / REUSE LOGIC ---
             uint32_t* old_index_ptr = reinterpret_cast<uint32_t*>(&_grid[i][0]);
-            
+
+            // If the cell was previously allocated (old_index != _gridSize), we are discarding it.
+            // We should train a GaussianCube from the old data before overwriting it.
             if (*old_index_ptr != _gridSize) {
-                _grid[*old_index_ptr] = _dummy;
+                uint32_t prev_owner_idx = *old_index_ptr;
+                
+                if (prev_owner_idx != _gridSize) {
+                    // This buffer block was used by `prev_owner_idx` in the grid.
+                    // We need to invalidate the pointer in the grid for that old index.
+                    _grid[prev_owner_idx] = _dummy;
+                }
             }
+            
+            
             VoxelData* cell = _grid[i];
-            for (uint16_t j = 1; j < _cellSize; ++j) {
-                cell[j].d    = 0xFFFFu;
-                cell[j].s    = 1u;
-                cell[j].hits = 0u;
-            }
-            // cell[0] = VoxelData{static_cast<uint64_t>(i), 0xFF, 0xFF};
+            // Optimized reset using memcpy
+            std::memcpy(cell + 1, _reset_template + 1, (_cellSize - 1) * sizeof(VoxelData));
 
             uint32_t* control_index_ptr = reinterpret_cast<uint32_t*>(&cell[0]);
             *control_index_ptr = i;
 
-            // if (onCellAllocated) onCellAllocated(i);
 			_cellIndex++;
 		}
 	}
@@ -225,6 +253,12 @@ class GRID16
 		z -= _minZ;
 		uint32_t int_x = (uint32_t)x, int_y = (uint32_t)y, int_z = (uint32_t)z;
         uint32_t i = int_x + int_y*_gridStepY + int_z*_gridStepZ;
+        
+        // Update timestamp for this cell
+        if (i < _gridSize) {
+            _last_update_frame[i] = _current_frame;
+        }
+        
 		if(_grid[i] == _dummy) { return _garbage; }
 		uint32_t j = 1 + (uint32_t)((x-int_x)*_oneDivRes) + (uint32_t)((y-int_y)*_oneDivRes)*_cellStepY + (uint32_t)((z-int_z)*_oneDivRes)*_cellStepZ;
 
@@ -304,6 +338,67 @@ class GRID16
         std::cout << "[GRID16] PCD exported: " << filename << "\n";
     }
     
+    // void exportGridToPCD(const std::string& filename, int subsampling_factor)
+    // {
+    //     using PointT = pcl::PointXYZ;
+    //     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    //     const uint32_t step = std::max(1, subsampling_factor);
+
+    //     // Factor de escala para convertir int8 (-128..127) a distancia física
+    //     // El rango total del byte (254 pasos utiles) cubre el tamaño del voxel (_cellRes)
+    //     const float offset_scale = _cellRes / 254.0f;
+
+    //     for (uint32_t cz = 0; cz < _gridSizeZ; ++cz)
+    //     {
+    //         const float z0 = _minZ + static_cast<float>(cz);
+    //         for (uint32_t cy = 0; cy < _gridSizeY; ++cy)
+    //         {
+    //             const float y0 = _minY + static_cast<float>(cy);
+    //             for (uint32_t cx = 0; cx < _gridSizeX; ++cx)
+    //             {
+    //                 const float x0 = _minX + static_cast<float>(cx);
+    //                 const uint32_t i = cx + cy * _gridStepY + cz * _gridStepZ;
+    //                 VoxelData* cell = _grid[i];
+    //                 if (cell == _dummy) continue;
+                    
+    //                 for (uint32_t vz = 0; vz < _cellSizeZ; vz += step) {
+    //                     for (uint32_t vy = 0; vy < _cellSizeY; vy += step) {
+    //                         for (uint32_t vx = 0; vx < _cellSizeX; vx += step) {
+    //                             const uint32_t j = 1u + vx + vy * _cellStepY + vz * _cellStepZ;
+
+    //                             const uint64_t dist = __builtin_popcount(cell[j].d);   
+    //                             if (dist > 1u)                 continue;            
+    //                             if ((cell[j].s & 0x01u) != 0u)  continue;    
+
+    //                             PointT pt;
+                                
+    //                             // 1. Calcular el centro geométrico del vóxel
+    //                             float center_x = x0 + (vx + 0.5f) * _cellRes;
+    //                             float center_y = y0 + (vy + 0.5f) * _cellRes;
+    //                             float center_z = z0 + (vz + 0.5f) * _cellRes;
+
+    //                             // 2. Sumar el offset real (descomprimido)
+    //                             pt.x = center_x + (static_cast<float>(cell[j].offX) * offset_scale);
+    //                             pt.y = center_y + (static_cast<float>(cell[j].offY) * offset_scale);
+    //                             pt.z = center_z + (static_cast<float>(cell[j].offZ) * offset_scale);
+                                
+    //                             cloud->push_back(pt);
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     if (cloud->empty())
+    //     {
+    //         std::cerr << "[GRID16] Warning: Empty Cloud (no mask==0 found).\n";
+    //         return;
+    //     }
+    //     std::cout << "[GRID16] Total points (mask==0): " << cloud->size() << "\n";
+    //     pcl::io::savePCDFileBinary(filename, *cloud);
+    //     std::cout << "[GRID16] PCD exported: " << filename << "\n";
+    // }
+
     void exportGridToPLY(const std::string& filename, int subsampling_factor)
         {
         using PointT = pcl::PointXYZ;
@@ -457,7 +552,7 @@ class GRID16
     }
 
     void exportMesh(const std::string& filename, float iso_level, int occ_min_hits){
-        RCLCPP_INFO(rclcpp::get_logger("GRID16_Mesh"), "Starting mesh extraction...");
+        // RCLCPP_INFO(rclcpp::get_logger("GRID16_Mesh"), "Starting mesh extraction..."); // Commented out as RCLCPP is not defined here
 
         vtkSmartPointer<vtkAppendPolyData> appender = 
             vtkSmartPointer<vtkAppendPolyData>::New();
@@ -527,7 +622,7 @@ class GRID16
             }
         } 
 
-        RCLCPP_INFO(rclcpp::get_logger("GRID16_Mesh"), "Joining cell meshes...");
+        // RCLCPP_INFO(rclcpp::get_logger("GRID16_Mesh"), "Joining cell meshes..."); // Commented out
         appender->Update();
 
         auto ext_pos = filename.find_last_of('.');
@@ -554,9 +649,8 @@ class GRID16
             throw std::invalid_argument("Unsupported file extension: " + ext);
         }
         
-        RCLCPP_INFO(rclcpp::get_logger("GRID16_Mesh"), "Mesh saved to %s", filename.c_str());
+        // RCLCPP_INFO(rclcpp::get_logger("GRID16_Mesh"), "Mesh saved to %s", filename.c_str()); // Commented out
     }
-
 
 protected:
 
@@ -568,8 +662,207 @@ protected:
     uint64_t _maxCells, _cellSize, _cellIndex;
     VoxelData *_buffer;
 	VoxelData *_dummy;
+    VoxelData *_reset_template;
 	VoxelData _garbage;
+    std::vector<uint32_t> _last_update_frame;
+    uint32_t _current_frame;
+    float _grid_mesh_iso = 0.0f;
+    int _training_points = 500;
+    bool _debug_mode = true;
+    
+public:
+
+    void setTrainingPoints(int n) {
+        _training_points = n;
+    }
+
+    void setCurrentFrame(uint32_t frame) {
+        _current_frame = frame;
+    }
+
+    void setDebugMode(bool enabled) {
+        _debug_mode = enabled;
+    }
+    
+    void exportGaussianMesh(const std::string& filename) {
+        std::cout << "[GRID16] Exporting Gaussian Mesh to " << filename << "..." << std::endl;
+        
+        vtkSmartPointer<vtkAppendPolyData> appender = vtkSmartPointer<vtkAppendPolyData>::New();
+        
+        std::vector<vtkSmartPointer<vtkPolyData>> meshes;
+        
+        const std::string C_RESET = "\033[0m";
+        const std::string C_GREEN = "\033[32m";  
+        const std::string C_YELLOW = "\033[33m"; 
+        const std::string C_RED = "\033[31m";    
+        const std::string C_CYAN = "\033[36m";   
+        const std::string C_MAGENTA = "\033[35m"; 
+
+        std::cout << "\n" << C_CYAN << "=== STARTING BATCH PROCESSING ===" << C_RESET << "\n\n";
+
+        // 1. Filtrado previo
+        std::vector<uint32_t> active_indices;
+        active_indices.reserve(_gridSize / 10); 
+
+        for(uint32_t i=0; i<_gridSize; ++i) {
+            if (_grid[i] != _dummy) {
+                bool has_occupied = false;
+                bool has_free = false;
+                for (uint16_t j = 1; j < _cellSize; ++j) {
+                    if ((_grid[i][j].s & 0x01u) == 0) has_occupied = true;
+                    else has_free = true;
+                    if (has_occupied && has_free) break;
+                }
+                if (has_occupied && has_free) { 
+                    active_indices.push_back(i);
+                }
+            }
+        }
+        
+        std::cout << "[GRID16] Processing " << active_indices.size() << " surface cells (skipped solid/empty)..." << std::endl;
+        
+        #ifdef _OPENMP
+        std::cout << "[GRID16] OpenMP Max Threads: " << omp_get_max_threads() << std::endl;
+        #endif
+
+        auto t_global_start = std::chrono::high_resolution_clock::now();
+        
+        int processed_count = 0;    
+        int kept_count = 0;         
+        int lost_count = 0;         
+        double total_mae_kept = 0.0; 
+        
+        const double LOST_THRESHOLD = 0.5; 
+
+        #pragma omp parallel
+        {
+            #pragma omp single
+            {
+                #ifdef _OPENMP
+                std::cout << "[GRID16] Running with " << omp_get_num_threads() << " threads." << std::endl;
+                #endif
+            }
+
+            Workspace ws;
+
+            #pragma omp for schedule(dynamic)
+            for(size_t k=0; k<active_indices.size(); ++k) {
+                uint32_t i = active_indices[k];
+                auto t_start = std::chrono::high_resolution_clock::now();
+
+                uint32_t p_z = i / _gridStepZ;
+                uint32_t rem = i % _gridStepZ;
+                uint32_t p_y = rem / _gridStepY;
+                uint32_t p_x = rem % _gridStepY;
+                float p_fx = _minX + p_x;
+                float p_fy = _minY + p_y;
+                float p_fz = _minZ + p_z;
+                
+                auto t_load = std::chrono::high_resolution_clock::now();
+
+                VoxelCube v_cube(_grid[i], _cellSizeX, _cellSizeY, _cellSizeZ, _cellRes, p_fx, p_fy, p_fz);
+                auto t_init = std::chrono::high_resolution_clock::now(); 
+
+                GaussianCube g_cube;
+                g_cube.train(v_cube, ws, _training_points);
+                auto t_opt = std::chrono::high_resolution_clock::now();
+                
+                vtkSmartPointer<vtkPolyData> mesh = g_cube.get_mesh(p_fx, p_fy, p_fz, _cellRes, _cellSizeX, _cellSizeY, _cellSizeZ, ws);
+                auto t_mesh = std::chrono::high_resolution_clock::now();
+                
+                auto d = [&](auto a, auto b) { return std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count(); };
+                long dur_total = d(t_start, t_mesh);
+                long dur_load = d(t_start, t_load);
+                long dur_init = d(t_load, t_init);
+                long dur_opt = d(t_init, t_opt);
+                long dur_mesh = d(t_opt, t_mesh);
+
+                if (mesh) {
+                    #pragma omp critical
+                    {
+                        processed_count++;
+                        
+                        if (g_cube.mae > LOST_THRESHOLD) {
+                            lost_count++;
+                            std::stringstream ss;
+                            ss << "[" << std::setw(3) << processed_count << "/" << active_indices.size() << "] "
+                               << "Idx: " << std::setw(6) << i << " | "
+                               << C_MAGENTA << "LOST (MAE: " << std::fixed << std::setprecision(4) << g_cube.mae << "m)" << C_RESET
+                               << " | T: " << std::setw(3) << dur_total << "ms";
+                            std::cout << ss.str() << std::endl;
+                        } 
+                        else {
+                            kept_count++;
+                            meshes.push_back(mesh);
+                            total_mae_kept += g_cube.mae;
+                            
+                            if (_debug_mode) {
+                                if (kept_count % 1 == 0 || g_cube.mae > 0.05) {
+                                    std::stringstream ss;
+                                    // Ancho fijo para contadores [  123/10000]
+                                    ss << "[" << std::setw(5) << processed_count << "/" << std::setw(5) << active_indices.size() << "] "
+                                    << "Idx:" << std::setw(6) << i << " | ";
+                                    
+                                    if (g_cube.mae > 0.03) ss << C_RED;
+                                    else if (g_cube.mae > 0.02) ss << C_YELLOW;
+                                    else ss << C_GREEN;
+                                    
+                                    // Ancho fijo para MAE (evita saltos entre 0.x y 1.x)
+                                    ss << "MAE:" << std::fixed << std::setw(6) << std::setprecision(4) << g_cube.mae << "m" << C_RESET;
+                                    
+                                    // Ancho fijo para cada tiempo parcial
+                                    ss << " | T:" << std::setw(4) << dur_total << "ms "
+                                    << "(L:" << std::setw(2) << dur_load 
+                                    << " I:" << std::setw(2) << dur_init 
+                                    << " O:" << std::setw(4) << dur_opt     
+                                    << " M:" << std::setw(2) << dur_mesh << ")";
+                                    std::cout << ss.str() << std::endl;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } 
+        
+        auto t_global_end = std::chrono::high_resolution_clock::now();
+        
+        // --- ESTADÍSTICAS FINALES ---
+        long total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_global_end - t_global_start).count();
+        double total_seconds = total_ms / 1000.0;
+        
+        double avg_ms_per_cube = (processed_count > 0) ? (double)total_ms / processed_count : 0.0;
+        double cubes_per_sec = (total_seconds > 0) ? (processed_count / total_seconds) : 0.0;
+        double avg_mae_kept = (kept_count > 0) ? (total_mae_kept / kept_count) : 0.0;
+        double lost_percentage = (processed_count > 0) ? ((double)lost_count / processed_count * 100.0) : 0.0;
+        double kept_percentage = (processed_count > 0) ? ((double)kept_count / processed_count * 100.0) : 0.0;
+        
+        std::cout << "\n" << C_CYAN << "=== SAVING FINAL MESH ===" << C_RESET << "\n";
+        std::cout << " > Total Time:       " << std::fixed << std::setprecision(2) << total_seconds << " s\n";
+        std::cout << " > Processed:        " << processed_count << " / " << active_indices.size() << "\n";        
+        std::cout << " > KEPT Cubes:       " << kept_count << " (" << std::fixed << std::setprecision(2) << kept_percentage << "%)\n";
+        std::cout << " > LOST Cubes:       " << lost_count << " (" << std::fixed << std::setprecision(2) << lost_percentage << "%)\n";
+        std::cout << " > Avg MAE (Kept):   " << std::fixed << std::setprecision(5) << avg_mae_kept << " m\n";
+        std::cout << " > Speed:            " << std::fixed << std::setprecision(2) << cubes_per_sec << " cubes/s\n";
+        std::cout << " > Avg Time/Cube:    " << std::fixed << std::setprecision(1) << avg_ms_per_cube << " ms\n";
+        
+        if (meshes.empty()) {
+            std::cerr << "[GRID16] Warning: No meshes to save." << std::endl;
+            return;
+        }
+
+        for (const auto& mesh : meshes) {
+            appender->AddInputData(mesh);
+        }
+
+        appender->Update();
+        vtkSmartPointer<vtkSTLWriter> writer = vtkSmartPointer<vtkSTLWriter>::New();
+        writer->SetFileName(filename.c_str());
+        writer->SetInputData(appender->GetOutput());
+        writer->SetFileTypeToBinary();
+        writer->Write();
+        std::cout << "[GRID16] Saved mesh to " << filename << std::endl;
+    }
 };
 
 #endif
-

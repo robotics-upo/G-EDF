@@ -62,7 +62,7 @@ def generate_launch_description():
             description='Name prefix for .yaml and .rviz files ("college", "mai").'
         ),
 
-        rviz_node,
+        # rviz_node,
         db_tsdf_node,
         bag_play
     ])
