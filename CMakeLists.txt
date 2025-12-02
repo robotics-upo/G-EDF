@@ -114,27 +114,8 @@ target_link_libraries(gmm_solver
   VTK::IOGeometry
 )
 
-add_executable(test_gaussian src/test_gaussian.cpp)
-target_include_directories(test_gaussian PRIVATE 
-  include
-  ${EIGEN3_INCLUDE_DIR} 
-  ${VTK_INCLUDE_DIRS}
-  ${PCL_INCLUDE_DIRS}
-)
-target_link_libraries(test_gaussian
-  Ceres::ceres 
-  glog::glog
-  Eigen3::Eigen
-  OpenMP::OpenMP_CXX
-  VTK::CommonCore       
-  VTK::CommonDataModel 
-  VTK::FiltersCore     
-  VTK::IOXML            
-  VTK::IOGeometry
-  VTK::ImagingCore
-  VTK::ImagingGeneral
-  ${PCL_LIBRARIES}
-)
+add_executable(reconstruct_mesh src/reconstruct.cpp)
+target_link_libraries(reconstruct_mesh ${VTK_LIBRARIES} OpenMP::OpenMP_CXX)
 
 # Activar Link Time Optimization (LTO) para el solver
 if(result)
@@ -149,6 +130,7 @@ install(DIRECTORY
 install(TARGETS
   db_tsdf_node
   gmm_solver
+  reconstruct_mesh
   DESTINATION lib/${PROJECT_NAME}
 )
 

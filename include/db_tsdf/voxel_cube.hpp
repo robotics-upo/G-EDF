@@ -14,12 +14,12 @@ struct VoxelData
 	uint8_t s;		// bit0: sign (0 occ / 1 free)
 	uint8_t hits;	// hit counter
 
-    // int8_t offX; 
-    // int8_t offY;
-    // int8_t offZ;
-    // uint8_t posHits;
+    int8_t offX; 
+    int8_t offY;
+    int8_t offZ;
+    uint8_t posHits;
 };
-static_assert(sizeof(VoxelData) == 4, "VoxelData must be 4-bytes aligned");
+static_assert(sizeof(VoxelData) == 8, "VoxelData must be 8-bytes aligned");
 
 struct DenseGrid
 {

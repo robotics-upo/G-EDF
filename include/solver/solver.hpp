@@ -133,7 +133,7 @@ private:
     int _max_num_threads;
 
 public:
-    GMMSolver() : _max_num_iterations(100), _max_num_threads(1) {}
+    GMMSolver() : _max_num_iterations(150), _max_num_threads(1) {}
 
     void setMaxNumIterations(int n) { _max_num_iterations = n; }
 
@@ -158,15 +158,15 @@ public:
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::DENSE_NORMAL_CHOLESKY;
         options.minimizer_progress_to_stdout = false;
-        options.max_solver_time_in_seconds = 0.08;
+        options.max_solver_time_in_seconds = 0.8;
         options.max_num_iterations = _max_num_iterations;
         options.num_threads = _max_num_threads;
         
         options.check_gradients = false; 
 
-        options.function_tolerance = 1e-5;
-        options.gradient_tolerance = 1e-5;
-        options.parameter_tolerance = 1e-5;
+        options.function_tolerance = 1e-4;
+        options.gradient_tolerance = 1e-4;
+        options.parameter_tolerance = 1e-4;
 
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);

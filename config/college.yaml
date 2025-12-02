@@ -19,7 +19,7 @@ db_tsdf_node:
     # --- Point Cloud Filtering Parameters ---
     pc_downsampling: 1                   # Downsampling factor for the input cloud
     min_range: 1.5                       # Minimum sensor range (meters)
-    max_range: 80.0                      # Maximum sensor range (meters)
+    max_range: 50.0                      # Maximum sensor range (meters)
 
 
     # --- Gaussian Cube Parameters ---
@@ -28,8 +28,8 @@ db_tsdf_node:
 
     # --- TSDF Grid Definition ---
     # Defines the boundaries and resolution of the TSDF volume
-    tdf_grid_res: 0.025                   # Voxel resolution (meters)
-    tdf_max_cells: 75000.0               # Maximum allocated cells
+    tdf_grid_res: 0.05                   # Voxel resolution (meters)
+    tdf_max_cells: 55000.0               # Maximum allocated cells
 
     tdfGridSizeX_low: -100.0             # Grid X-axis minimum (meters)
     tdfGridSizeX_high: 100.0             # Grid X-axis maximum (meters)
@@ -40,9 +40,9 @@ db_tsdf_node:
 
 
     # --- Integration Kernel Parameters ---
-    kernel_size:   11                     # Integration kernel size. Must be an odd number.
-    occ_min_hits:  30                    # Minimum hits to consider a voxel occupied
+    kernel_size:   9                     # Integration kernel size. Must be an odd number.
+    occ_min_hits:  50                    # Minimum hits to consider a voxel occupied
     bins_az:       360                   # Number of azimuthal bins
     bins_el:       360                   # Number of elevation bins
-    shadow_radius: 5                     # Shadow casting radius (in voxels)
+    shadow_radius: 4                     # Shadow casting radius (in voxels)
     distance_mode: "L2"                  # Distance metric (e.g., "L1", "L2")

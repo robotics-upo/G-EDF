@@ -360,6 +360,8 @@ void TSDFNode::pointcloudCallback(const sensor_msgs::msg::PointCloud2::ConstShar
     m_grid3d.setCurrentFrame(counter);
 }
 
+// ===================== Export grid as PLY ===================== //
+// ros2 service call /save_gaussian_mesh std_srvs/srv/Trigger
 void TSDFNode::saveGaussianMesh(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                                 std::shared_ptr<std_srvs::srv::Trigger::Response> response)
 {
@@ -373,7 +375,7 @@ void TSDFNode::saveGaussianMesh(const std::shared_ptr<std_srvs::srv::Trigger::Re
             // Flush and export
             m_grid3d.exportGaussianMesh(filename);
             
-            RCLCPP_INFO(this->get_logger(), "Gaussian mesh saved.");
+            // RCLCPP_INFO(this->get_logger(), "Gaussian mesh saved.");
         } catch (const std::exception &e) {
             RCLCPP_ERROR(this->get_logger(), "Failed to save Gaussian mesh: %s", e.what());
         }

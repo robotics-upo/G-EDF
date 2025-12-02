@@ -18,6 +18,13 @@
 #define PARAMS_PER_GAUSSIAN 7
 #define N_PARAMS (NUM_GAUSSIANS * PARAMS_PER_GAUSSIAN)
 
+struct CubeExportData {
+    uint32_t index;
+    float x, y, z;
+    double mae;
+    std::vector<double> params; // Vector crudo del solver
+};
+
 struct Peak
 {
     int idx;

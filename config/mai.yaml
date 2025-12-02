@@ -29,21 +29,21 @@ db_tsdf_node:
     
     # --- TSDF Grid Definition ---
     # Defines the boundaries and resolution of the TSDF volume
-    tdf_grid_res: 0.05                   # Voxel resolution (meters)
-    tdf_max_cells: 100000.0              # Maximum allocated cells
+    tdf_grid_res: 0.025                   # Voxel resolution (meters)
+    tdf_max_cells: 25000.0              # Maximum allocated cells
 
-    tdfGridSizeX_low: -100.0             # Grid X-axis minimum (meters)
-    tdfGridSizeX_high: 100.0             # Grid X-axis maximum (meters)
-    tdfGridSizeY_low: -100.0             # Grid Y-axis minimum (meters)
-    tdfGridSizeY_high: 100.0             # Grid Y-axis maximum (meters)
-    tdfGridSizeZ_low: -15.0              # Grid Z-axis minimum (meters)
+    tdfGridSizeX_low: -1000.0             # Grid X-axis minimum (meters)
+    tdfGridSizeX_high: 1000.0             # Grid X-axis maximum (meters)
+    tdfGridSizeY_low: -15.0             # Grid Y-axis minimum (meters)
+    tdfGridSizeY_high: 15.0             # Grid Y-axis maximum (meters)
+    tdfGridSizeZ_low: -10.0              # Grid Z-axis minimum (meters)
     tdfGridSizeZ_high: 15.0              # Grid Z-axis maximum (meters)
 
 
     # --- Integration Kernel Parameters ---
-    kernel_size: 5                       # Integration kernel size. Must be an odd number.
+    kernel_size: 7                       # Integration kernel size. Must be an odd number.
     occ_min_hits: 1                      # Minimum hits to consider a voxel occupied
     bins_az: 360                          # Number of azimuthal bins
     bins_el: 360                          # Number of elevation bins
     shadow_radius: 3                     # Shadow casting radius (in voxels)
-    distance_mode: "L1"                  # Distance metric (e.g., "L1", "L2")
+    distance_mode: "L2"                  # Distance metric (e.g., "L1", "L2")
