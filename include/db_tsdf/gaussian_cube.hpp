@@ -14,7 +14,7 @@
 #include <vtkMarchingCubes.h>
 #include <vtkPolyData.h>
 
-#define NUM_GAUSSIANS 10
+#define NUM_GAUSSIANS 16
 #define PARAMS_PER_GAUSSIAN 7
 #define N_PARAMS (NUM_GAUSSIANS * PARAMS_PER_GAUSSIAN)
 
@@ -22,7 +22,7 @@ struct CubeExportData {
     uint32_t index;
     float x, y, z;
     double mae;
-    std::vector<double> params; // Vector crudo del solver
+    std::vector<double> params; 
 };
 
 struct Peak
@@ -84,7 +84,7 @@ public:
             }
         }
         
-        // MAE puro del cubo
+        // MAE del cubo
         mae = (valid_count == 0) ? 0.0 : (error_sum / valid_count);
         is_valid = true;
     }

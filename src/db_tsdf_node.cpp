@@ -360,7 +360,7 @@ void TSDFNode::pointcloudCallback(const sensor_msgs::msg::PointCloud2::ConstShar
     m_grid3d.setCurrentFrame(counter);
 }
 
-// ===================== Export grid as PLY ===================== //
+// ===================== Export grid as CSV for GAUSSIAN ===================== //
 // ros2 service call /save_gaussian_mesh std_srvs/srv/Trigger
 void TSDFNode::saveGaussianMesh(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
                                 std::shared_ptr<std_srvs::srv::Trigger::Response> response)

@@ -17,15 +17,13 @@
 #include <vtkSTLWriter.h>
 #include <vtkPolyData.h>
 
-// RESOLUCIÓN (Metros)
 const float TARGET_RESOLUTION = 0.05f; 
 
-// ZONA DE INTERÉS (CROP)
-const float MIN_X = -99099.0f; 
-const float MAX_X =  99099.0f; 
+const float MIN_X = -99999.0f; 
+const float MAX_X =  99999.0f; 
 
 const float MIN_Y = -99999.0f;
-const float MAX_Y =  99909.0f;
+const float MAX_Y =  99999.0f;
 
 const float MIN_Z = -99999.0f; 
 const float MAX_Z =  99999.0f; 
@@ -77,7 +75,7 @@ double predict_sdf_exact(double x, double y, double z, const CubeData& cube) {
 
 int main(int argc, char** argv) {
     std::string csv_path = "/home/ros/ros2_ws/gaussian_mesh.csv";
-    std::string out_path = "/home/ros/ros2_ws/reconstructed_mesh.stl";
+    std::string out_path = "/home/ros/ros2_ws/gaussian_mesh.stl";
     
     const int NX = static_cast<int>(std::round(BLOCK_SIZE / TARGET_RESOLUTION));
     const int NY = NX; 
@@ -90,15 +88,15 @@ int main(int argc, char** argv) {
     const double SPACING = TARGET_RESOLUTION;
     const double ORIGIN_OFFSET = -0.5 * TARGET_RESOLUTION;
 
-    std::cout << "=== RECONSTRUCCION CON RESOLUCION PERSONALIZADA ===" << std::endl;
-    std::cout << "Resolucion: " << TARGET_RESOLUTION << " m" << std::endl;
-    std::cout << "Grid por Cubo: " << DIM_X << "x" << DIM_Y << "x" << DIM_Z << " puntos" << std::endl;
-    std::cout << "Zona X: [" << MIN_X << ", " << MAX_X << "]" << std::endl;
+    std::cout << "=== Reconstructed mesh ===" << std::endl;
+    std::cout << "Resolution: " << TARGET_RESOLUTION << " m" << std::endl;
+    std::cout << "Grid per Cube: " << DIM_X << "x" << DIM_Y << "x" << DIM_Z << " points" << std::endl;
+    std::cout << "Zone X: [" << MIN_X << ", " << MAX_X << "]" << std::endl;
 
     std::map<CubeKey, CubeData> grid_map;
     std::ifstream file(csv_path);
     if (!file.is_open()) {
-        std::cerr << "Error: No se pudo abrir " << csv_path << std::endl;
+        std::cerr << "Error: Can not open " << csv_path << std::endl;
         return 1;
     }
 
@@ -140,10 +138,10 @@ int main(int argc, char** argv) {
     }
     file.close();
     
-    std::cout << "Cubos a procesar: " << grid_map.size() << std::endl;
+    std::cout << "Cubes to process: " << grid_map.size() << std::endl;
 
     if (grid_map.empty()) {
-        std::cerr << "AVISO: Zona vacia." << std::endl;
+        std::cerr << "WARNING: Empty zone." << std::endl;
         return 0;
     }
 
@@ -194,13 +192,13 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::cout << "Uniendo..." << std::endl;
+    std::cout << "Joining..." << std::endl;
     for (const auto& mesh : thread_meshes) {
         if (mesh) global_appender->AddInputData(mesh);
     }
     
     if (global_appender->GetNumberOfInputConnections(0) == 0) {
-         std::cout << "Sin geometria resultante." << std::endl;
+         std::cout << "Without resulting geometry." << std::endl;
          return 0;
     }
 
@@ -212,6 +210,6 @@ int main(int argc, char** argv) {
     writer->SetFileTypeToBinary();
     writer->Write();
 
-    std::cout << "Archivo guardado: " << out_path << std::endl;
+    std::cout << "Saved file: " << out_path << std::endl;
     return 0;
 }

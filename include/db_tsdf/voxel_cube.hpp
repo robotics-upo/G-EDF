@@ -14,12 +14,12 @@ struct VoxelData
 	uint8_t s;		// bit0: sign (0 occ / 1 free)
 	uint8_t hits;	// hit counter
 
-    int8_t offX; 
-    int8_t offY;
-    int8_t offZ;
-    uint8_t posHits;
+    // int8_t offX; 
+    // int8_t offY;
+    // int8_t offZ;
+    // uint8_t posHits;
 };
-static_assert(sizeof(VoxelData) == 8, "VoxelData must be 8-bytes aligned");
+static_assert(sizeof(VoxelData) == 4, "VoxelData must be 4-bytes aligned");
 
 struct DenseGrid
 {
@@ -183,118 +183,6 @@ public:
         
         return grid;
     }
-
-    // const DenseGrid& toDenseGrid(Workspace& ws) const
-    // {
-    //     DenseGrid& grid = ws.dense_grid;
-    //     // Add padding +2
-    //     grid.nx = _sizeX + 2;
-    //     grid.ny = _sizeY + 2;
-    //     grid.nz = _sizeZ + 2;
-    //     grid.voxel_size = _res;
-        
-    //     // Fix coordinates
-    //     grid.min_x = _x0 - 0.5 * _res;
-    //     grid.min_y = _y0 - 0.5 * _res;
-    //     grid.min_z = _z0 - 0.5 * _res;
-        
-    //     size_t total_voxels = grid.nx * grid.ny * grid.nz;
-    //     int max_dim = std::max({grid.nx, grid.ny, grid.nz});
-        
-    //     ws.resize(total_voxels, max_dim);
-        
-    //     // Reset buffers
-    //     std::fill(ws.temp_grid.begin(), ws.temp_grid.begin() + total_voxels, 1);
-        
-    //     // Factor para convertir int8 a unidades de voxel (0..0.5) para el EDT
-    //     // El EDT interno trabaja en "unidades de voxel", no metros.
-    //     // 254.0f cubre el rango completo (-0.5 a 0.5)
-    //     const float offset_to_voxel_unit = 1.0f / 254.0f;
-
-    //     // 1. Fill from VoxelData
-    //     for (uint32_t z = 0; z < _sizeZ; ++z)
-    //     {
-    //         for (uint32_t y = 0; y < _sizeY; ++y)
-    //         {
-    //             for (uint32_t x = 0; x < _sizeX; ++x)
-    //             {
-    //                 uint32_t idx_v = 1 + x + y * _sizeX + z * _sizeX * _sizeY;
-    //                 VoxelData& v = _data[idx_v];
-                    
-    //                 int idx = (z + 1) * grid.nx * grid.ny + (y + 1) * grid.nx + (x + 1);
-                    
-    //                 int s = (v.s & 0x01u);
-    //                 ws.temp_grid[idx] = static_cast<int8_t>(s);
-
-    //                 // --- INYECCIÓN DE PRECISIÓN SUB-VÓXEL ---
-    //                 if (s == 0) // Si es obstáculo
-    //                 {
-    //                     // Descomprimimos offset a unidades de voxel
-    //                     float dx = static_cast<float>(v.offX) * offset_to_voxel_unit;
-    //                     float dy = static_cast<float>(v.offY) * offset_to_voxel_unit;
-    //                     float dz = static_cast<float>(v.offZ) * offset_to_voxel_unit;
-                        
-    //                     // Inicializamos la distancia con el offset cuadrado
-    //                     // El algoritmo EDT propagará esto correctamente
-    //                     ws.dist_to_obstacle[idx] = (dx*dx + dy*dy + dz*dz);
-    //                 }
-    //                 else
-    //                 {
-    //                     ws.dist_to_obstacle[idx] = 1e9f; // INF
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     // 2. Padding 'Edge' (Copia simple)
-    //     // ... (Mantén tus bucles de padding A, B y C aquí, no cambian) ...
-    //     for (int z = 0; z < grid.nz; ++z) {
-    //         for (int y = 0; y < grid.ny; ++y) {
-    //             ws.temp_grid[z * grid.nx * grid.ny + y * grid.nx + 0] = ws.temp_grid[z * grid.nx * grid.ny + y * grid.nx + 1];
-    //             ws.temp_grid[z * grid.nx * grid.ny + y * grid.nx + grid.nx - 1] = ws.temp_grid[z * grid.nx * grid.ny + y * grid.nx + grid.nx - 2];
-    //             // Nota: No copiamos dist_to_obstacle en el padding porque el EDT lo sobreescribirá
-    //             // o se puede inicializar a INF, pero el temp_grid manda.
-    //         }
-    //     }
-    //     for (int z = 0; z < grid.nz; ++z) {
-    //         for (int x = 0; x < grid.nx; ++x) {
-    //             ws.temp_grid[z * grid.nx * grid.ny + 0 * grid.nx + x] = ws.temp_grid[z * grid.nx * grid.ny + 1 * grid.nx + x];
-    //             ws.temp_grid[z * grid.nx * grid.ny + (grid.ny - 1) * grid.nx + x] = ws.temp_grid[z * grid.nx * grid.ny + (grid.ny - 2) * grid.nx + x];
-    //         }
-    //     }
-    //     for (int y = 0; y < grid.ny; ++y) {
-    //         for (int x = 0; x < grid.nx; ++x) {
-    //             ws.temp_grid[0 * grid.nx * grid.ny + y * grid.nx + x] = ws.temp_grid[1 * grid.nx * grid.ny + y * grid.nx + x];
-    //             ws.temp_grid[(grid.nz - 1) * grid.nx * grid.ny + y * grid.nx + x] = ws.temp_grid[(grid.nz - 2) * grid.nx * grid.ny + y * grid.nx + x];
-    //         }
-    //     }
-
-    //     // 3. Inicializar dist_to_air (Esto sigue igual, binario)
-    //     float INF = 1e9f;
-    //     for (size_t i = 0; i < total_voxels; ++i) {
-    //         // dist_to_obstacle YA ESTÁ INICIALIZADO ARRIBA CON OFFSETS
-    //         if (ws.temp_grid[i] == 1) ws.dist_to_obstacle[i] = INF; // Asegurar INF en aire
-            
-    //         ws.dist_to_air[i] = (ws.temp_grid[i] == 1) ? 0.0f : INF;
-    //     }
-
-    //     dt_3d(ws.dist_to_obstacle, grid.nx, grid.ny, grid.nz, ws);
-    //     dt_3d(ws.dist_to_air, grid.nx, grid.ny, grid.nz, ws);
-
-    //     // 4. SDF Final
-    //     for (size_t i = 0; i < total_voxels; ++i) {
-    //         double d_obs = std::sqrt(ws.dist_to_obstacle[i]);
-    //         double d_air = std::sqrt(ws.dist_to_air[i]);
-
-    //         if (ws.temp_grid[i] == 1) { // Air
-    //             grid.sdf_data[i] = (d_obs - 0.5) * grid.voxel_size;
-    //         } else { // Obstacle
-    //             grid.sdf_data[i] = -(d_air - 0.5) * grid.voxel_size;
-    //         }
-    //     }
-        
-    //     return grid;
-    // }
 
 private:
     VoxelData* _data;

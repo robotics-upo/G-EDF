@@ -119,6 +119,7 @@ The node provides ROS 2 services to export the reconstructed map:
 - Mesh (STL)
    ```bash
    ros2 service call /save_grid_mesh std_srvs/srv/Trigger "{}"
+   ros2 service call /save_gaussian_mesh std_srvs/srv/Trigger   # gaussian_mesh.csv
    ```
 
 - Voxel Point Cloud
@@ -129,7 +130,7 @@ The node provides ROS 2 services to export the reconstructed map:
 
 - Voxel Statistics (CSV)
    ```bash
-   ros2 service call /save_grid_csv std_srvs/srv/Trigger "{}"
+   ros2 service call /save_grid_csv std_srvs/srv/Trigger
     ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p> 
