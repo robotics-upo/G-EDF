@@ -287,6 +287,11 @@ void TSDFNode::pointcloudCallback(const sensor_msgs::msg::PointCloud2::ConstShar
             }
             T = getTransformMatrix(*best_it);
 
+            float rad = -15.0f * M_PI / 180.0f;
+            Eigen::Matrix4f R = Eigen::Matrix4f::Identity();
+            R.block<3,3>(0,0) = Eigen::AngleAxisf(rad, Eigen::Vector3f::UnitZ()).toRotationMatrix();
+            T = R * T;
+
         } else {
             // --- GENERIC MODE: tf2_ros::Buffer (for mai_city bag) ---
             try {

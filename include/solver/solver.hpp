@@ -139,7 +139,7 @@ public:
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::DENSE_NORMAL_CHOLESKY;
         options.minimizer_progress_to_stdout = false;
-        options.max_solver_time_in_seconds = 0.07;
+        // options.max_solver_time_in_seconds = 0.07;
         options.max_num_iterations = _max_num_iterations;
         options.num_threads = _max_num_threads;
         

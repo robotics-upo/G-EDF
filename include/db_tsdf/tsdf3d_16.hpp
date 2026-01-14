@@ -230,14 +230,7 @@ public:
 		// Applies the pre-computed kernel to all grid cells centered in the cloud points 
 		const float step = m_kernelRadius * m_resolution;
 
-		// const float half_res = m_resolution * 0.5f;
-        // const float dist_to_int8_scale = 254.0f * m_oneDivRes;
-
-		// const int center_k = (m_kernelRadius * m_kernelSize * m_kernelSize) + 
-        //                      (m_kernelRadius * m_kernelSize) + 
-        //                      m_kernelRadius;
-
-		#pragma omp parallel for num_threads(16) shared(m_dirKernels, m_grid) 
+		#pragma omp parallel for num_threads(10) shared(m_dirKernels, m_grid) 
 		for(uint32_t i=0; i<cloud.size(); i++)
 		{
 			
@@ -267,27 +260,6 @@ public:
 
 						if(DK.signs[k] == 0 && v.hits < m_occMinHits) 
 						{
-							// if (k == center_k)
-							// {
-							// 	if (v.posHits < 255) 
-							// 	{
-							// 		// Calcular diff geométrica
-							// 		float dx = px - (x + half_res);
-							// 		float dy = py - (y + half_res);
-							// 		float dz = pz - (z + half_res);
-							// 		// Convertir a int8 (-127..127)
-							// 		float targetX = dx * dist_to_int8_scale;
-							// 		float targetY = dy * dist_to_int8_scale;
-							// 		float targetZ = dz * dist_to_int8_scale;
-							// 		// Media incremental
-							// 		float alpha = 1.0f / (static_cast<float>(v.posHits) + 1.0f);
-							// 		v.offX += (int8_t)((targetX - v.offX) * alpha);
-							// 		v.offY += (int8_t)((targetY - v.offY) * alpha);
-							// 		v.offZ += (int8_t)((targetZ - v.offZ) * alpha);
-							// 		v.posHits++;
-							// 	}
-							// }
-
 							++v.hits;
 							
 							if (v.hits == m_occMinHits)
