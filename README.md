@@ -1,16 +1,18 @@
-# Gaussian SDF: High-Performance Surface Modeling
+# GaussDF: Precise & Memory-Efficient Gaussian Distance Fields
 
-A high-performance C++ pipeline for representing large-scale 3D point clouds as a compact, block-sparse Gaussian Mixture Model (GMM) of the Signed Distance Function (SDF).
+GaussDF is a high-performance C++ pipeline designed to generate **precise offline maps** from large-scale 3D point clouds. By representing environments as a compact, block-sparse Gaussian Mixture Model (GMM), it provides a continuous **Distance Field (DF)** with centimeter-level accuracy (MAE < 0.03m).
+
+The resulting maps are extremely lightweight and scalable to any environment size, making them ideal for **fast, real-time localization** and high-fidelity reconstruction in robotics applications.
 
 ## Overview
 
-This system partitions 3D space into 1m³ voxels (cubes) and approximates the local geometry using an adaptive number of 3D Gaussians. It provides a significant compression ratio over raw point clouds while enabling fast, continuous SDF queries for robotics and reconstruction tasks.
+GaussDF partitions 3D space into millions of 1m³ voxels (cubes) and approximates local geometry using an adaptive set of 3D Gaussians. It achieves high compression ratios (storing complex surfaces in a lightweight CSV format) while enabling fast, continuous distance queries.
 
 ### Key Features
 *   **Adaptive Training**: Automatically scales Gaussian count based on local geometric complexity.
-*   **Dual SDF Modes**:
-    *   **Pure (Unsigned)**: Direct Euclidean distance approximation.
-    *   **Signed**: Surface-aware field using Felzenszwalb-based propagation.
+*   **Dual Distance Modes**:
+    *   **Pure (Unsigned)**: Direct Euclidean distance approximation (UDF).
+    *   **Signed**: Surface-aware field using Felzenszwalb-based propagation (SDF).
 *   **Massive Scale Support**: Optimized for clouds with 50M+ points using multi-level KdTree structures.
 *   **Parallel Processing**: Fully multi-threaded execution via OpenMP.
 
@@ -32,23 +34,47 @@ make -j$(nproc)
 ## Usage
 
 ### 1. Training (`gaussian_trainer`)
-Converts a point cloud into a Gaussian-based SDF model.
-
+Converts a point cloud into a Gaussian-based Distance Field model.
 ```bash
-./gaussian_trainer <input.ply/pcd> <output_prefix> [threads] [samples] [mode]
+./gaussian_trainer <input> <output_base> [threads] [samples] [mode]
 ```
-*   `mode`: `pure` (default) or `signed`.
-*   `samples`: Points sampled per cube for optimization (default: 1000).
 
 ### 2. Reconstruction (`gaussian_to_ply`)
-Generates a dense point cloud (isosurface) from a trained model.
-
+Generates a dense point cloud (isosurface) from a trained model for visualization.
 ```bash
 ./gaussian_to_ply <model.csv> <output.ply> [threshold] [resolution] [bounds...]
 ```
 *   `threshold`: Distance value defining the surface (default: 0.05m).
 *   `resolution`: Voxel size for reconstruction (default: 0.02m).
-*   `bounds`: Optional `xmin xmax ymin ymax zmin zmax` to reconstruct a specific region.
+
+---
+
+## Configuration
+
+GaussDF is highly tunable. Parameters can be adjusted via command-line arguments or directly in the source code.
+
+### 1. Internal Logic (`src/main.cpp`)
+These variables control the adaptive training and spatial search behavior:
+
+| Variable | Default | Description |
+|---|---|---|
+| `populated_steps` | `{8, 16, 32}` | Gaussian counts tried for populated cubes. |
+| `empty_steps` | `{2, 4, 8, 16}` | Gaussian counts tried for empty cubes. |
+| `mae_threshold` | `0.03m` | Target Mean Absolute Error for early stopping. |
+| `empty_dist_threshold`| `3.0m` | Max distance from surface to train empty cubes. |
+| `search_radius_pop` | `1.5m` | Radius for gathering neighbor context in populated cubes. |
+| `search_radius_empty`| `dist + 0.5m`| Dynamic radius for gathering points in empty cubes. |
+| `edt_resolution` | `0.025m` | Resolution of the local EDT grid used for training. |
+
+### 2. Solver Parameters (`include/solver/solver.hpp`)
+Fine-tune the Ceres Solver optimization:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `max_iterations` | `250` | Maximum iterations per training attempt. |
+| `max_time_seconds` | `2.0s` | Time limit for a single optimization attempt. |
+| `function_tolerance` | `1e-4` | Convergence criteria for the objective function. |
+| `use_importance_weighting`| `true/false`| Prioritizes accuracy near the surface (disabled for empty cubes). |
 
 ---
 
