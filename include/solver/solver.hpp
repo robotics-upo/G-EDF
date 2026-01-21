@@ -6,42 +6,39 @@
 #include <algorithm>
 #include "ceres/ceres.h"
 
-// Definiciones globales
-#ifndef NUM_GAUSSIANS
-#define NUM_GAUSSIANS 16
-#endif
-
 #define PARAMS_PER_GAUSSIAN 7
-#define N_PARAMS (NUM_GAUSSIANS * PARAMS_PER_GAUSSIAN)
 
-struct GMMData
-{
+/// Sample point with 3D position and SDF value
+struct GMMData {
     double x, y, z;
     double d;
 };
 
-class AnalyticGMMCostFunction : public ceres::SizedCostFunction<1, N_PARAMS>
-{
+/// Dynamic cost function for GMM SDF fitting (supports variable gaussian count)
+class DynamicGMMCostFunction : public ceres::CostFunction {
 public:
-    AnalyticGMMCostFunction(double x, double y, double z, double d, double weight_scale)
-        : x_(x), y_(y), z_(z), d_(d), w_scale_(weight_scale) {}
+    DynamicGMMCostFunction(double x, double y, double z, double d, double weight_scale, int num_gaussians, bool use_importance)
+        : x_(x), y_(y), z_(z), d_(d), w_scale_(weight_scale), num_gaussians_(num_gaussians), use_importance_(use_importance) {
+        // Set residual and parameter block sizes dynamically
+        set_num_residuals(1);
+        mutable_parameter_block_sizes()->push_back(num_gaussians * PARAMS_PER_GAUSSIAN);
+    }
 
-    virtual ~AnalyticGMMCostFunction() {}
+    virtual ~DynamicGMMCostFunction() {}
 
-    virtual bool Evaluate(double const *const *parameters,
-                          double *residuals,
-                          double **jacobians) const override
-    {
-        const double *params = parameters[0];
+    virtual bool Evaluate(double const* const* parameters,
+                          double* residuals,
+                          double** jacobians) const override {
+        const double* params = parameters[0];
+        const int n_params = num_gaussians_ * PARAMS_PER_GAUSSIAN;
         double sdf_pred = 0.0;
-        double eps = 1e-9;
+        constexpr double eps = 1e-9;
 
-        double *jacobian = (jacobians != NULL) ? jacobians[0] : NULL;
+        double* jacobian = (jacobians != nullptr && jacobians[0] != nullptr) ? jacobians[0] : nullptr;
         if (jacobian)
-            std::fill(jacobian, jacobian + N_PARAMS, 0.0);
+            std::fill(jacobian, jacobian + n_params, 0.0);
 
-        for (int i = 0; i < NUM_GAUSSIANS; ++i)
-        {
+        for (int i = 0; i < num_gaussians_; ++i) {
             int j = i * PARAMS_PER_GAUSSIAN;
 
             double mx = params[j + 0];
@@ -64,8 +61,8 @@ public:
             double vz = z_ - mz;
 
             double z0 = vx * inv_l00;
-            double z1 = vy * inv_l11; 
-            double z2 = vz * inv_l22; 
+            double z1 = vy * inv_l11;
+            double z2 = vz * inv_l22;
 
             double dist_sq = z0 * z0 + z1 * z1 + z2 * z2;
             double exp_val = std::exp(-0.5 * dist_sq);
@@ -73,10 +70,9 @@ public:
 
             sdf_pred += term;
 
-            // --- BACKWARD ---
-            if (jacobian)
-            {
-                double alpha = term * (-0.5); 
+            // Jacobians
+            if (jacobian) {
+                double alpha = term * (-0.5);
                 double pre_geom = -2.0 * alpha * w_scale_;
 
                 jacobian[j + 6] = exp_val * w_scale_;
@@ -95,12 +91,14 @@ public:
             }
         }
 
-        double importance = std::exp(-5.0 * std::abs(d_));
+        double importance = 1.0;
+        if (use_importance_) {
+            importance = std::exp(-5.0 * std::abs(d_));
+        }
         residuals[0] = (sdf_pred - d_) * w_scale_ * importance;
 
-        if (jacobian)
-        {
-            for (int k = 0; k < N_PARAMS; ++k)
+        if (jacobian) {
+            for (int k = 0; k < n_params; ++k)
                 jacobian[k] *= importance;
         }
 
@@ -109,50 +107,65 @@ public:
 
 private:
     const double x_, y_, z_, d_, w_scale_;
+    const int num_gaussians_;
+    const bool use_importance_;
 };
 
-class GMMSolver
-{
-private:
-    int _max_num_iterations;
-    int _max_num_threads;
+/// Solver configuration
+struct SolverConfig {
+    int max_iterations = 150;
+    double max_time_seconds = 0.0;      // 0 = unlimited
+    double function_tolerance = 1e-4;
+    double gradient_tolerance = 1e-4;
+    double parameter_tolerance = 1e-4;
+    int num_threads = 1;
+    bool verbose = false;
+    bool use_importance_weighting = true; // Default to true (original behavior)
+};
 
+/// GMM solver using Ceres optimizer (supports variable gaussian count)
+class GMMSolver {
 public:
-    GMMSolver() : _max_num_iterations(150), _max_num_threads(1) {}
+    GMMSolver() = default;
+    explicit GMMSolver(const SolverConfig& cfg) : config_(cfg) {}
 
-    void setMaxNumIterations(int n) { _max_num_iterations = n; }
+    void setConfig(const SolverConfig& cfg) { config_ = cfg; }
+    SolverConfig& config() { return config_; }
 
-    bool solve(std::vector<GMMData> &data, std::vector<double> &initial_params)
-    {
-        double *x = initial_params.data();
+    bool solve(std::vector<GMMData>& data, std::vector<double>& params) {
+        if (data.empty() || params.empty()) return false;
+
+        int num_gaussians = params.size() / PARAMS_PER_GAUSSIAN;
+        if (num_gaussians <= 0) return false;
+
+        double* x = params.data();
         ceres::Problem problem;
 
-        ceres::LossFunction *loss_function = nullptr;
-
-        for (const auto &d : data)
-        {
-            ceres::CostFunction *cost = new AnalyticGMMCostFunction(d.x, d.y, d.z, d.d, 1.0);
-            problem.AddResidualBlock(cost, loss_function, x);
-            // problem.AddResidualBlock(cost, NULL, x);
+        for (const auto& d : data) {
+            auto* cost = new DynamicGMMCostFunction(d.x, d.y, d.z, d.d, 1.0, num_gaussians, config_.use_importance_weighting);
+            problem.AddResidualBlock(cost, nullptr, x);
         }
 
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::DENSE_NORMAL_CHOLESKY;
-        options.minimizer_progress_to_stdout = false;
-        // options.max_solver_time_in_seconds = 0.07;
-        options.max_num_iterations = _max_num_iterations;
-        options.num_threads = _max_num_threads;
-        
-        options.check_gradients = false; 
+        options.minimizer_progress_to_stdout = config_.verbose;
+        options.max_num_iterations = config_.max_iterations;
+        options.num_threads = config_.num_threads;
+        options.function_tolerance = config_.function_tolerance;
+        options.gradient_tolerance = config_.gradient_tolerance;
+        options.parameter_tolerance = config_.parameter_tolerance;
 
-        options.function_tolerance = 1e-4;
-        options.gradient_tolerance = 1e-4;
-        options.parameter_tolerance = 1e-4;
+        if (config_.max_time_seconds > 0.0)
+            options.max_solver_time_in_seconds = config_.max_time_seconds;
 
         ceres::Solver::Summary summary;
         ceres::Solve(options, &problem, &summary);
-        return true;
+
+        return summary.IsSolutionUsable();
     }
+
+private:
+    SolverConfig config_;
 };
 
-#endif
+#endif // SOLVER_HPP

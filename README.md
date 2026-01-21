@@ -1,143 +1,134 @@
-<h1 align="center"><a href="https://arxiv.org/html/2509.20081v1" style="text-decoration:none;color:inherit;">DB-TSDF: Directional Bitmask-based Truncated Signed Distance Fields for Efficient Volumetric Mapping</a></h1>
+# Gaussian SDF Trainer & Reconstructor
 
-<p align="center">
-<strong>🤖 <a href="https://robotics-upo.github.io/DB-TSDF/">Visit the project website</a> 🤖</strong>
-</p>
-
-<div align="center">
-<a href="https://youtu.be/P4Hx4bD1OmM"><img src="https://img.shields.io/badge/YouTube-Video-red?logo=youtube" alt="YouTube Video"></a>
-  <a href="https://arxiv.org/html/2509.20081v1"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv" alt="arXiv Paper"></a>
-  </a>
-</div>
-
-
-This paper presents a high-efficiency, CPU-only volumetric mapping framework based on a Truncated Signed Distance Field (TSDF). The system incrementally fuses raw LiDAR point-cloud data into a voxel grid using a directional bitmask-based integration scheme, producing dense and consistent TSDF representations suitable for real-time 3D reconstruction. A key feature of the approach is that the processing time per point-cloud remains constant, regardless of the voxel grid resolution, enabling high resolution mapping without sacrificing runtime performance. In contrast to most recent TSDF/ESDF methods that rely on GPU acceleration, our method operates entirely on CPU, achieving competitive results in speed. Experiments on real-world open datasets demonstrate that the generated maps attain accuracy on par with contemporary mapping techniques. 
-
-![Example reconstruction](docs/media/college_tittle.png)
-
----
+This project implements a pipeline to convert 3D pointclouds into a compact Gaussian Mixture Model (GMM) representation of the Signed Distance Function (SDF), and reconstruct them back to meshes/pointclouds.
 
 ## Overview
 
-This framework incrementally fuses LiDAR data into a dense voxel grid:  
-- **Directional kernels** model LiDAR beam geometry and occlusion.  
-- **Bitmask encoding** ensures constant-time updates per scan.  
-- **Signed distance representation** differentiates free and occupied space.  
-- **Multi-threaded C++** implementation inside ROS 2.  
+The system divides the pointcloud into 1m³ cubes and trains a set of Gaussians (default 16) for each cube to approximate the local geometry. It supports two modes:
+1.  **Pure (Unsigned)**: Approximates the Euclidean distance to the nearest point.
+2.  **Signed**: Uses the Felzenszwalb algorithm to estimate interior/exterior regions (Signed Distance Field).
 
-The design emphasizes predictable runtime, high resolution, and full CPU compatibility, making it suitable for robotic platforms where GPU resources are limited.
+## Dependencies
 
-<details>
-  <summary>Index</summary>
+*   **C++17** compiler
+*   **CMake** 3.14+
+*   **PCL** (Point Cloud Library) - `libpcl-dev`
+*   **Ceres Solver** - `libceres-dev`
+*   **OpenMP** - For parallel processing
 
-- [1. Prerequisites](#1-prerequisites)
-- [2. Installation](#2-installation)
-  - [2.1 Install Locally](#21-install-locally)
-  - [2.2 Install Using Docker](#22-install-using-docker)
-- [3. Running the Code](#3-running-the-code)
-- [4. Output Data and Services](#4-output-data-and-services)
-</details>
+## Compilation
 
+```bash
+mkdir build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
 
-## 1. Prerequisites
+This will generate two executables:
+*   `gaussian_trainer`: The main training application.
+*   `gaussian_to_ply`: Tool to visualize the trained models.
 
-Before you begin, make sure you have ROS 2 Humble and Ubuntu 22.04 (or higher) installed on your system. These are the core requirements for the project to run smoothly. If you haven't installed ROS 2 Humble yet, follow the official [installation guide](https://docs.ros.org/en/humble/Installation.html) for your platform. This guide will walk you through all the necessary steps to set up the core ROS 2 environment on your system. 
+## Usage
 
+### 1. Training (`gaussian_trainer`)
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> 
+Reads a pointcloud and trains Gaussians for each occupied cube.
 
-## 2. Installation
+```bash
+./gaussian_trainer <input_cloud> <output_base> [threads] [samples] [mode]
+```
 
-### Install localy
-To install and build the project, simply clone the repository as follows:
+*   **input_cloud**: Path to `.ply` or `.pcd` file.
+*   **output_base**: Prefix for output files (e.g., `outputs/model` will create `outputs/model.csv` and `outputs/model.gsdf`).
+*   **threads**: Number of OMP threads (default: max available).
+*   **samples**: Number of points to sample per cube for training (default: 1000).
+*   **mode**: `pure` (default) or `signed`.
 
-   ```bash
-   git clone https://github.com/robotics-upo/DB-TSDF.git
-   cd ..
-   colcon build
-   source install/setup.bash
-   ```
+**Example:**
+```bash
+# Train with 8 threads, 2000 samples per cube, in signed mode
+./gaussian_trainer input.ply my_model 8 2000 pure
+```
 
-### Install using Docker
-Follow these steps to build and run DB-TSDF inside a Docker container:
-1. Clone the repository:
-    ```bash
-    git clone https://github.com/robotics-upo/DB-TSDF.git
-    cd DB-TSDF
-    ```
+**Outputs:**
+*   `*.csv`: Human-readable text format.
+*   `*.gsdf`: Binary format (Gaussian SDF), more compact and faster to load.
 
-2. Build the Docker image:
-    ```bash
-    docker build -t db_tsdf_ros2:humble .
-    ```
+### 2. Reconstruction (`gaussian_to_ply`)
 
-3. Allow Docker to access the X server (for GUI like RViz):
-    ```bash
-    xhost +local:docker
-    ```
+Converts the trained Gaussian parameters back to a dense pointcloud (isosurface extraction) for visualization.
 
-4. Run the container
-    ```bash
-    docker run -it \
-      --env="DISPLAY" \
-      --env="QT_X11_NO_MITSHM=1" \
-      --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
-      --name db_tsdf_container \
-      db_tsdf_ros2:humble
-    ```
-The Dockerfile sets up the entire environment and downloads the DB-TSDF code automatically.
+```bash
+./gaussian_to_ply <input_model> <output_ply> [threshold] [resolution] [bounds...]
+```
 
+*   **input_model**: Path to `.csv` or `.gsdf` file from the trainer.
+*   **output_ply**: Path to save the reconstructed PLY.
+*   **threshold**: Iso-value threshold to define the surface (default: 0.05). Lower = thinner surface.
+*   **resolution**: Step size for reconstruction grid in meters (default: 0.02). Smaller = higher quality but slower.
+*   **bounds** (Optional): `xmin xmax ymin ymax zmin zmax` to reconstruction only a specific region.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> 
+**Example:**
+```bash
+# Reconstruct with 2cm resolution
+./gaussian_to_ply my_model.gsdf reconstructed.ply 0.05 0.02
+```
 
-## 3. Running the Code
+## File Formats
 
-The launch system uses a single main launch file (`db_tsdf_launch.py`) and a config argument to specify which dataset configuration to load.
+### CSV Format
+Each line represents a single Gaussian, with the cube metadata repeated.
+```
+CubeX,CubeY,CubeZ,MAE,StdDev,G_ID,MeanX,MeanY,MeanZ,SigmaX,SigmaY,SigmaZ,Weight
+```
+*   **CubeX, CubeY, CubeZ**: Origin of the 1m³ cube.
+*   **MAE, StdDev**: Error metrics for the entire cube.
+*   **G_ID**: Index of the Gaussian within the cube (0-15).
+*   **MeanX, MeanY, MeanZ**: Absolute position of the Gaussian center.
+*   **SigmaX, SigmaY, SigmaZ**: Standard deviations (widths) of the Gaussian.
+*   **Weight**: Weight coefficient.
 
-This argument (e.g., `college`) will automatically load the corresponding parameter file (`college.yaml`) and the RViz configuration (`college.rviz`).
+### GSDF (Binary)
+A custom binary format designed for efficient storage of the block-sparse Gaussian field.
 
-First, open a terminal, source your workspace, and run the launch file. The node will start, RViz will open, and the system will wait for data.
+---
 
-To launch using the college configuration:
-   ```bash
-   ros2 launch db_tsdf db_tsdf_launch.py config:=college
-   ```
+## Algorithm Details
 
+### Cube Classification
 
-To feed data, simply play a recorded ROS 2 bag in another terminal:
-   ```bash
-   ros2 bag play /path/to/your_dataset
-   ```
+Each 1m³ cube is classified as either **Populated** (contains points) or **Empty** (no points but within distance threshold).
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> 
+### Populated Cubes
 
+1.  **Point Collection**: Points strictly inside the cube bounds are stored in `cube.point_indices`.
+2.  **Context Search (1.5x)**: A radius search (`sqrt(3) * 1.5m ≈ 2.6m`) from the cube center gathers neighboring points *outside* the cube to provide boundary context.
+3.  **Linear Densification**: Points inside the cube are optionally densified by interpolating between neighbors.
+4.  **EDT Cloud**: The final cloud for EDT generation is `densified_cloud` (cube points + interpolated) + `context_indices` (raw neighbor points).
+5.  **Training**: Adaptive loop tries `{8, 16, 32}` Gaussians until MAE ≤ 0.03m.
 
-## 4. Output data and Services
+### Empty Cubes
 
-The node provides ROS 2 services to export the reconstructed map:
+1.  **Coarse Check**: A downsampled KdTree quickly checks if the nearest point is within `empty_distance_threshold` (3.0m).
+2.  **Exact Distance**: If the coarse check passes, the global KdTree calculates the precise distance to the nearest point.
+3.  **Dynamic Radius**: The search radius for EDT is set to `exact_dist + 0.5m`, minimizing the number of points gathered.
+4.  **EDT Cloud**: All points within this dynamic radius are used to build a local KdTree.
+5.  **Training**: Adaptive loop tries `{2, 4, 8, 16}` Gaussians with `positive_only=true` (no negative weights) and `use_importance_weighting=false` (to properly fit large distances).
 
-- Mesh (STL)
-   ```bash
-   ros2 service call /save_grid_mesh std_srvs/srv/Trigger "{}"
-   ros2 service call /save_gaussian_mesh std_srvs/srv/Trigger   # gaussian_mesh.csv
-   ```
+### Solver Configuration
 
-- Voxel Point Cloud
-   ```bash
-   ros2 service call /save_grid_ply std_srvs/srv/Trigger "{}"   # grid_data.ply
-   ros2 service call /save_grid_pcd std_srvs/srv/Trigger "{}"   # grid_data.pcd
-   ```
+| Parameter | Value | Notes |
+|---|---|---|
+| `max_iterations` | 250 | Increased for better convergence |
+| `max_time_seconds` | 2.0 | Time budget per training attempt |
+| `mae_threshold_good` | 0.03 | Target error for early stopping |
+| `mae_threshold_max` | 0.30 | Cubes above this are discarded |
 
-- Voxel Statistics (CSV)
-   ```bash
-   ros2 service call /save_grid_csv std_srvs/srv/Trigger
-    ```
+### Performance Optimizations
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p> 
+*   **Coarse KdTree**: A downsampled version of the input cloud (1 point per 10-50) is used for fast distance checks on millions of empty cubes.
+*   **Local KdTree**: For populated and nearby-empty cubes, a small local KdTree is built from relevant points, avoiding 64,000 searches against the full 66M-point cloud.
+*   **Dynamic Search Radius**: For empty cubes, the search radius adapts to the actual distance, preventing unnecessary point gathering.
+*   **Importance Weighting**: Disabled for empty cubes so the solver properly minimizes error for large distance values (which would otherwise be ignored).
 
-
-## Acknowledgements
-
-![Logos](docs/media/fondos_proyectos.png)
-
-This work was supported by the grants PICRA 4.0 (PLEC2023-010353), funded by the Spanish Ministry of Science and Innovation and the Spanish Research Agency (MCIN/AEI/10.13039/501100011033); and COBUILD (PID2024-161069OB-C31), funded by the  panish Ministry of Science, Innovation and Universities, the Spanish Research Agency (MICIU/AEI/10.13039/501100011033) and the European Regional Development Fund (FEDER, UE).

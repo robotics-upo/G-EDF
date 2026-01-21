@@ -1,2 +1,24 @@
+# Build artifacts
+build/
+cmake-build-*/
+
+# Data files (maps, pointclouds)
+*.ply
+*.pcd
+*.csv
+*.gsdf
+
+# Previous ignores
 utils/
 tests/
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
