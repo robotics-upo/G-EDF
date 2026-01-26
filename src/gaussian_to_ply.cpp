@@ -71,16 +71,38 @@ bool loadConfig(const std::string& filepath, ReconstructionConfig& cfg) {
     }
 }
 
-struct Gaussian {
-    double x, y, z;
-    double l0, l1, l2;
-    double w;
+struct GaussianSoA {
+    std::vector<float> x, y, z;
+    std::vector<float> inv_l0, inv_l1, inv_l2;
+    std::vector<float> w;
+
+    void reserve(size_t n) {
+        x.reserve(n); y.reserve(n); z.reserve(n);
+        inv_l0.reserve(n); inv_l1.reserve(n); inv_l2.reserve(n);
+        w.reserve(n);
+    }
+
+    void push_back(double px, double py, double pz, double l0, double l1, double l2, double pw) {
+        x.push_back(static_cast<float>(px));
+        y.push_back(static_cast<float>(py));
+        z.push_back(static_cast<float>(pz));
+        inv_l0.push_back(static_cast<float>(1.0 / l0));
+        inv_l1.push_back(static_cast<float>(1.0 / l1));
+        inv_l2.push_back(static_cast<float>(1.0 / l2));
+        w.push_back(static_cast<float>(pw));
+    }
+    
+    void clear() {
+        x.clear(); y.clear(); z.clear();
+        inv_l0.clear(); inv_l1.clear(); inv_l2.clear();
+        w.clear();
+    }
 };
 
 struct CubeData {
     double ox, oy, oz;
     double mae = 0.0;
-    std::vector<Gaussian> gaussians;
+    GaussianSoA gaussians;
 };
 
 struct CubeKeyHash {
@@ -162,19 +184,14 @@ std::vector<CubeData> loadBinary(const std::string& filename, float* margin_out 
             GaussianData gd;
             file.read(reinterpret_cast<char*>(&gd), sizeof(GaussianData));
             
-            Gaussian gauss;
-            gauss.x = gd.mean[0];
-            gauss.y = gd.mean[1];
-            gauss.z = gd.mean[2];
             // In binary we stored raw sigma, here we need squared scales (l0, l1, l2)
             // Matches CSVExporter behavior where params[3] is the scale parameter (sigma^4)
             
-            gauss.l0 = std::pow(gd.sigma[0], 4);
-            gauss.l1 = std::pow(gd.sigma[1], 4);
-            gauss.l2 = std::pow(gd.sigma[2], 4);
-            gauss.w = gd.weight;
+            double l0 = std::pow(gd.sigma[0], 4);
+            double l1 = std::pow(gd.sigma[1], 4);
+            double l2 = std::pow(gd.sigma[2], 4);
             
-            cube.gaussians.push_back(gauss);
+            cube.gaussians.push_back(gd.mean[0], gd.mean[1], gd.mean[2], l0, l1, l2, gd.weight);
         }
         cubes.push_back(cube);
     }
@@ -220,27 +237,137 @@ std::vector<CubeData> loadCSV(const std::string& filename, float* margin_out) {
             current.gaussians.clear();
         }
 
-        Gaussian g;
-        g.x = std::stod(tokens[6]);
-        g.y = std::stod(tokens[7]);
-        g.z = std::stod(tokens[8]);
-        g.l0 = std::pow(std::stod(tokens[9]), 4);
-        g.l1 = std::pow(std::stod(tokens[10]), 4);
-        g.l2 = std::pow(std::stod(tokens[11]), 4);
-        g.w = std::stod(tokens[12]);
-        current.gaussians.push_back(g);
+        double gx = std::stod(tokens[6]);
+        double gy = std::stod(tokens[7]);
+        double gz = std::stod(tokens[8]);
+        double l0 = std::pow(std::stod(tokens[9]), 4);
+        double l1 = std::pow(std::stod(tokens[10]), 4);
+        double l2 = std::pow(std::stod(tokens[11]), 4);
+        double w = std::stod(tokens[12]);
+        
+        current.gaussians.push_back(gx, gy, gz, l0, l1, l2, w);
     }
     if (current.ox != -999999) cubes.push_back(current);
     return cubes;
 }
 
-double predict(double x, double y, double z, const std::vector<Gaussian>& gs) {
-    double val = 0.0;
-    for (const auto& g : gs) {
-        double dx = x - g.x, dy = y - g.y, dz = z - g.z;
-        double dsq = (dx*dx)/g.l0 + (dy*dy)/g.l1 + (dz*dz)/g.l2;
-        val += g.w * std::exp(-0.5 * dsq);
+#include <immintrin.h>
+
+// ==========================================
+// AVX2 Fast Exponential Approximation
+// ==========================================
+// Based on typical high-performance implementations (e.g., fmath, VCL)
+// Computes exp(x) for x <= 0. Approximates exp(x) = 2^(x * log2(e))
+inline __m256 fast_exp_avx(__m256 x) {
+    // Constants
+    const __m256 log2e = _mm256_set1_ps(1.44269504088896340736f);
+    const __m256 ln2   = _mm256_set1_ps(0.69314718056f);
+    
+    // Underflow check: exp(-88) is approx 5.9e-39, close to FLT_MIN.
+    // Inputs smaller than this should return 0.0f to avoid garbage from bit shifting negative exponents.
+    const __m256 min_input = _mm256_set1_ps(-88.0f);
+    __m256 zero_mask = _mm256_cmp_ps(x, min_input, _CMP_GT_OS); // 0xFFFFFFFF if x > -88, else 0
+
+    // 1. x * log2(e)
+    __m256 t = _mm256_mul_ps(x, log2e);
+
+    // 2. Round to integer (exponent part)
+    __m256 n = _mm256_round_ps(t, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+    
+    // 3. Fraction part: r = x - n*ln2
+    __m256 r = _mm256_fnmadd_ps(n, ln2, x);
+
+    // 4. Polynomial approximation for exp(r) in [-0.5*ln2, 0.5*ln2]
+    // Degree 4 Taylor series: 1 + r + r^2/2 + r^3/6 + r^4/24
+    const __m256 p0 = _mm256_set1_ps(1.0f / 24.0f);
+    const __m256 p1 = _mm256_set1_ps(1.0f / 6.0f);
+    const __m256 p2 = _mm256_set1_ps(0.5f);
+    const __m256 p3 = _mm256_set1_ps(1.0f);
+    
+    __m256 poly = _mm256_fmadd_ps(p0, r, p1); // p0*r + p1
+    poly = _mm256_fmadd_ps(poly, r, p2);      // (..)*r + p2
+    poly = _mm256_fmadd_ps(poly, r, p3);      // (..)*r + p3
+    poly = _mm256_fmadd_ps(poly, r, p3);      // (..)*r + 1
+
+    // 5. Build 2^n
+    __m256i n_int = _mm256_cvtps_epi32(n);
+    // Add bias (127) and shift to exponent position (23)
+    __m256i e_int = _mm256_slli_epi32(_mm256_add_epi32(n_int, _mm256_set1_epi32(127)), 23);
+    __m256 pow2n = _mm256_castsi256_ps(e_int);
+
+    // 6. Combine and apply zero mask
+    __m256 result = _mm256_mul_ps(poly, pow2n);
+    return _mm256_and_ps(result, zero_mask);
+}
+
+double predict(double x, double y, double z, const GaussianSoA& gs) {
+    float fx = static_cast<float>(x);
+    float fy = static_cast<float>(y);
+    float fz = static_cast<float>(z);
+    
+    size_t n = gs.x.size();
+    const float* __restrict__ px = gs.x.data();
+    const float* __restrict__ py = gs.y.data();
+    const float* __restrict__ pz = gs.z.data();
+    const float* __restrict__ il0 = gs.inv_l0.data();
+    const float* __restrict__ il1 = gs.inv_l1.data();
+    const float* __restrict__ il2 = gs.inv_l2.data();
+    const float* __restrict__ pw = gs.w.data();
+
+    // AVX2 Loop
+    __m256 v_val = _mm256_setzero_ps();
+    __m256 v_fx = _mm256_set1_ps(fx);
+    __m256 v_fy = _mm256_set1_ps(fy);
+    __m256 v_fz = _mm256_set1_ps(fz);
+    __m256 v_minus_half = _mm256_set1_ps(-0.5f);
+    
+    size_t i = 0;
+    // Process 8 elements at a time
+    for (; i + 7 < n; i += 8) {
+        // Load Data (Unaligned loads are fast on modern CPUs)
+        __m256 v_px = _mm256_loadu_ps(px + i);
+        __m256 v_py = _mm256_loadu_ps(py + i);
+        __m256 v_pz = _mm256_loadu_ps(pz + i);
+        
+        __m256 v_il0 = _mm256_loadu_ps(il0 + i);
+        __m256 v_il1 = _mm256_loadu_ps(il1 + i);
+        __m256 v_il2 = _mm256_loadu_ps(il2 + i);
+        __m256 v_pw  = _mm256_loadu_ps(pw + i);
+
+        // Calculate deltas
+        __m256 dx = _mm256_sub_ps(v_fx, v_px);
+        __m256 dy = _mm256_sub_ps(v_fy, v_py);
+        __m256 dz = _mm256_sub_ps(v_fz, v_pz);
+
+        // Square and scale: dsq = dx*dx*il0 + ...
+        __m256 dsq = _mm256_mul_ps(_mm256_mul_ps(dx, dx), v_il0);
+        dsq = _mm256_fmadd_ps(_mm256_mul_ps(dy, dy), v_il1, dsq);
+        dsq = _mm256_fmadd_ps(_mm256_mul_ps(dz, dz), v_il2, dsq);
+
+        // Calculate exp(-0.5 * dsq)
+        __m256 arg = _mm256_mul_ps(dsq, v_minus_half);
+        __m256 exp_val = fast_exp_avx(arg);
+
+        // Accumulate: val += w * exp
+        v_val = _mm256_fmadd_ps(v_pw, exp_val, v_val);
     }
+
+    // Horizontal sum of AVX register
+    // (There are faster ways but this is not the bottleneck compared to the loop)
+    float temp[8];
+    _mm256_storeu_ps(temp, v_val);
+    double val = 0.0;
+    for (int k = 0; k < 8; ++k) val += temp[k];
+
+    // Tail loop (scalar)
+    for (; i < n; ++i) {
+        float dx = fx - px[i];
+        float dy = fy - py[i];
+        float dz = fz - pz[i];
+        float dsq = (dx*dx)*il0[i] + (dy*dy)*il1[i] + (dz*dz)*il2[i];
+        val += pw[i] * std::exp(-0.5f * dsq);
+    }
+    
     return val;
 }
 
