@@ -1,0 +1,35 @@
+# =============================================================================
+# GaussDF Reconstruction Configuration
+# =============================================================================
+# Parameters for converting Gaussian CSV to PLY point cloud.
+# Modify values here instead of recompiling.
+
+
+# Input/Output
+io:
+  input_csv: "/home/ros/ros2_ws/output/tls_map_v1.bin"                # Path to input Gaussian model (.csv)
+  output_ply: "/home/ros/ros2_ws/output/tls_map_v1.ply" # Path to output PLY point cloud
+
+
+# Reconstruction Settings
+reconstruction:
+  threshold: 0.1              # Distance threshold for surface detection (meters)
+  resolution: 0.2             # Voxel resolution for sampling (meters)
+  max_mae: 0.2                 # Maximum MAE allowed for a cube to be reconstructed (meters)
+
+
+# Region Filter (optional)
+region:
+  enabled: false
+  x_min: 0.0
+  x_max: 0.0
+  y_min: 0.0
+  y_max: 0.0
+  z_min: 0.0
+  z_max: 0.0
+
+
+# Smooth Blending Between Cubes (for overlapping margins)
+blending:
+  enabled: true             # Enable smooth interpolation between adjacent cubes
+

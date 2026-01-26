@@ -1,0 +1,58 @@
+# =============================================================================
+# GaussDF Trainer Configuration
+# =============================================================================
+# This file contains all tunable parameters for the training pipeline.
+# Modify values here instead of recompiling the source code.
+
+
+# Input/Output Settings
+io:
+  input_file: "/home/ros/ros2_ws/input/new-college-combined-1cm-v2.ply"               # Path to input pointcloud (.ply or .pcd)
+  output_base: "/home/ros/ros2_ws/output/new_college_v1"                 # Base name for output files
+  export_csv: true             # Export CSV for debugging
+  export_bin: true              # Export to memory-efficient binary (.bin)
+
+
+# Processing Settings
+processing:
+  num_threads: 16               # Number of OpenMP threads (0 = auto-detect)
+  cube_size: 1.0                # Size of each spatial cube in meters
+
+
+# Downsampling for Fast Skipping
+downsampling:
+  step: 100                     # Take every Nth point for coarse KdTree
+
+
+# Trainer Configuration
+trainer:
+  sample_points: 1000          # Number of sample points per cube for training
+  mae_threshold_good: 0.03     # MAE threshold for "good" fit (meters)
+  mae_threshold_max: 0.30      # Maximum acceptable MAE before discarding (meters)
+  edt_mode: "pure"             # EDT mode: "pure" (unsigned) or "signed"
+
+
+# Solver Configuration (Ceres Optimizer)
+solver:
+  max_iterations: 200          # Maximum optimization iterations per cube
+  max_time_seconds: 0.3        # Time budget per cube (0 = unlimited)
+
+
+# Adaptive Training Configuration
+adaptive:
+  populated_steps: [8, 16, 32]   # Gaussian counts to try for populated cubes
+  empty_steps: [2, 4, 8, 16]     # Gaussian counts to try for empty cubes
+  mae_threshold: 0.03            # Target MAE for early stopping
+  empty_distance_threshold: 2.0  # Max distance to train empty cubes (meters)
+
+
+# EDT Generation Settings
+edt:
+  voxel_size: 0.05            # Resolution of the SDF grid (meters)
+  margin_signed: 0.2           # Grid margin for signed EDT mode (meters)
+  margin_pure: 0.25             # Grid margin for pure EDT mode (meters)
+  edt_extension: 0.25           # Extra grid extension beyond margin (meters)
+  empty_search_margin: 0.25    # Additional search radius for empty cubes (meters)
+  empty_nearby_count: 100      # Number of nearest neighbors to use for empty cubes
+
+

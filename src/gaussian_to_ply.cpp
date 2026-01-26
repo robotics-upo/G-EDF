@@ -1,78 +1,223 @@
 /**
  * @file gaussian_to_ply.cpp
- * @brief Convert Gaussian CSV/GSDF to PLY mesh (marching cubes)
+ * @brief Convert Gaussian CSV to PLY point cloud with optional smooth blending
  */
 
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <vector>
 #include <string>
 #include <sstream>
 #include <cmath>
 #include <algorithm>
+#include <unordered_map>
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <omp.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/point_types.h>
+#include <yaml-cpp/yaml.h>
 
+const char* RST = "\033[0m";
+const char* GRN = "\033[32m";
+const char* RED = "\033[31m";
+const char* CYN = "\033[36m";
 
+struct ReconstructionConfig {
+    std::string input_csv;
+    std::string output_ply;
+    double threshold = 0.05;
+    double resolution = 0.02;
+    double max_mae = 100.0;
+    bool region_enabled = false;
+    double x_min = 0, x_max = 0;
+    double y_min = 0, y_max = 0;
+    double z_min = 0, z_max = 0;
+    bool blending_enabled = false;
+    double blending_margin = 0.2;
+};
+
+bool loadConfig(const std::string& filepath, ReconstructionConfig& cfg) {
+    try {
+        YAML::Node root = YAML::LoadFile(filepath);
+        if (root["io"]) {
+            cfg.input_csv = root["io"]["input_csv"].as<std::string>(cfg.input_csv);
+            cfg.output_ply = root["io"]["output_ply"].as<std::string>(cfg.output_ply);
+        }
+        if (root["reconstruction"]) {
+            cfg.threshold = root["reconstruction"]["threshold"].as<double>(cfg.threshold);
+            cfg.resolution = root["reconstruction"]["resolution"].as<double>(cfg.resolution);
+            cfg.max_mae = root["reconstruction"]["max_mae"].as<double>(cfg.max_mae);
+        }
+        if (root["region"]) {
+            cfg.region_enabled = root["region"]["enabled"].as<bool>(cfg.region_enabled);
+            cfg.x_min = root["region"]["x_min"].as<double>(cfg.x_min);
+            cfg.x_max = root["region"]["x_max"].as<double>(cfg.x_max);
+            cfg.y_min = root["region"]["y_min"].as<double>(cfg.y_min);
+            cfg.y_max = root["region"]["y_max"].as<double>(cfg.y_max);
+            cfg.z_min = root["region"]["z_min"].as<double>(cfg.z_min);
+            cfg.z_max = root["region"]["z_max"].as<double>(cfg.z_max);
+        }
+        if (root["blending"]) {
+            cfg.blending_enabled = root["blending"]["enabled"].as<bool>(cfg.blending_enabled);
+            cfg.blending_margin = root["blending"]["margin"].as<double>(cfg.blending_margin);
+        }
+        return true;
+    } catch (const YAML::Exception& e) {
+        std::cerr << RED << "[ERROR] YAML: " << e.what() << RST << std::endl;
+        return false;
+    }
+}
 
 struct Gaussian {
     double x, y, z;
-    double l0, l1, l2; // squared scales
+    double l0, l1, l2;
     double w;
 };
 
 struct CubeData {
-    int ix, iy, iz;
     double ox, oy, oz;
+    double mae = 0.0;
     std::vector<Gaussian> gaussians;
 };
 
-// Load CSV (One Gaussian per line)
-std::vector<CubeData> loadCSV(const std::string& filename) {
+struct CubeKeyHash {
+    std::size_t operator()(const std::tuple<int,int,int>& k) const {
+        return std::hash<int>()(std::get<0>(k)) ^ 
+               (std::hash<int>()(std::get<1>(k)) << 1) ^
+               (std::hash<int>()(std::get<2>(k)) << 2);
+    }
+};
+
+// ==========================================
+// Binary Format Structures (Must match Exporter)
+// ==========================================
+struct MapHeader {
+    char magic[4]; 
+    uint32_t version;
+    uint32_t num_cubes;
+    float avg_mae;
+    float std_dev;
+    float bounds_min[3];
+    float bounds_max[3];
+    float cube_size;
+    float empty_search_margin;
+    float cube_margin;
+    uint8_t padding[64];
+};
+
+struct CubeHeader {
+    float origin[3];
+    float mae;
+    float std_dev;
+    uint32_t num_gaussians;
+};
+
+struct GaussianData {
+    uint32_t id;
+    float mean[3];
+    float sigma[3];
+    float weight;
+};
+
+std::vector<CubeData> loadBinary(const std::string& filename, float* margin_out = nullptr) {
+    std::vector<CubeData> cubes;
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) return cubes;
+
+    MapHeader header;
+    file.read(reinterpret_cast<char*>(&header), sizeof(MapHeader));
+    
+    if (std::strncmp(header.magic, "GDF1", 4) != 0) {
+        std::cerr << RED << "[ERROR] Invalid binary format or version mismatch" << RST << std::endl;
+        return cubes;
+    }
+    
+    if (margin_out) *margin_out = header.cube_margin;
+
+    std::cout << "[INFO] Binary Map Info:\n"
+              << "       Version: " << header.version << "\n"
+              << "       Cubes:   " << header.num_cubes << "\n"
+              << "       Avg MAE: " << header.avg_mae << " m\n"
+              << "       Margin:  " << header.cube_margin << " m\n"
+              << "       Bounds:  [" << header.bounds_min[0] << ", " << header.bounds_min[1] << ", " << header.bounds_min[2] << "] to ["
+              << header.bounds_max[0] << ", " << header.bounds_max[1] << ", " << header.bounds_max[2] << "]\n";
+
+    cubes.reserve(header.num_cubes);
+
+    for (uint32_t i = 0; i < header.num_cubes; ++i) {
+        CubeHeader ch;
+        file.read(reinterpret_cast<char*>(&ch), sizeof(CubeHeader));
+        
+        CubeData cube;
+        cube.ox = ch.origin[0];
+        cube.oy = ch.origin[1];
+        cube.oz = ch.origin[2];
+        cube.mae = ch.mae;
+        cube.gaussians.reserve(ch.num_gaussians);
+        
+        for (uint32_t g = 0; g < ch.num_gaussians; ++g) {
+            GaussianData gd;
+            file.read(reinterpret_cast<char*>(&gd), sizeof(GaussianData));
+            
+            Gaussian gauss;
+            gauss.x = gd.mean[0];
+            gauss.y = gd.mean[1];
+            gauss.z = gd.mean[2];
+            // In binary we stored raw sigma, here we need squared scales (l0, l1, l2)
+            // Matches CSVExporter behavior where params[3] is the scale parameter (sigma^4)
+            
+            gauss.l0 = std::pow(gd.sigma[0], 4);
+            gauss.l1 = std::pow(gd.sigma[1], 4);
+            gauss.l2 = std::pow(gd.sigma[2], 4);
+            gauss.w = gd.weight;
+            
+            cube.gaussians.push_back(gauss);
+        }
+        cubes.push_back(cube);
+    }
+    return cubes;
+}
+
+
+std::vector<CubeData> loadCSV(const std::string& filename, float* margin_out = nullptr);
+
+std::vector<CubeData> loadMap(const std::string& filename, float* margin_out = nullptr) {
+    if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".bin") {
+        return loadBinary(filename, margin_out);
+    }
+    return loadCSV(filename, margin_out);
+}
+std::vector<CubeData> loadCSV(const std::string& filename, float* margin_out) {
     std::vector<CubeData> cubes;
     std::ifstream file(filename);
     if (!file.is_open()) return cubes;
 
     std::string line;
-    // Skip header
     std::getline(file, line);
 
-    int line_num = 1;
-    CubeData current_cube;
-    current_cube.ix = -999999; // Sentinel
-    current_cube.ox = -999999;
-    current_cube.oy = -999999;
-    current_cube.oz = -999999;
+    CubeData current;
+    current.ox = -999999;
 
     while (std::getline(file, line)) {
-        line_num++;
         std::stringstream ss(line);
         std::string token;
         std::vector<std::string> tokens;
         while (std::getline(ss, token, ',')) tokens.push_back(token);
-
         if (tokens.size() < 13) continue;
 
         double ox = std::stod(tokens[0]);
         double oy = std::stod(tokens[1]);
         double oz = std::stod(tokens[2]);
 
-        // Check if new cube
-        if (std::abs(ox - current_cube.ox) > 1e-4 || 
-            std::abs(oy - current_cube.oy) > 1e-4 || 
-            std::abs(oz - current_cube.oz) > 1e-4) {
-            
-            if (current_cube.ix != -999999) {
-                cubes.push_back(current_cube);
-            }
-            
-            current_cube.ix = 0; // Dummy
-            current_cube.iy = 0;
-            current_cube.iz = 0;
-            current_cube.ox = ox;
-            current_cube.oy = oy;
-            current_cube.oz = oz;
-            current_cube.gaussians.clear();
+        if (std::abs(ox - current.ox) > 1e-4 || 
+            std::abs(oy - current.oy) > 1e-4 || 
+            std::abs(oz - current.oz) > 1e-4) {
+            if (current.ox != -999999) cubes.push_back(current);
+            current.ox = ox; current.oy = oy; current.oz = oz;
+            current.gaussians.clear();
         }
 
         Gaussian g;
@@ -83,117 +228,265 @@ std::vector<CubeData> loadCSV(const std::string& filename) {
         g.l1 = std::pow(std::stod(tokens[10]), 4);
         g.l2 = std::pow(std::stod(tokens[11]), 4);
         g.w = std::stod(tokens[12]);
-        current_cube.gaussians.push_back(g);
+        current.gaussians.push_back(g);
     }
-    
-    // Push last cube
-    if (current_cube.ix != -999999) {
-        cubes.push_back(current_cube);
-    }
-
-    std::cout << "CSV Load Summary: Read " << line_num << " lines, Loaded " << cubes.size() << " cubes.\n";
+    if (current.ox != -999999) cubes.push_back(current);
     return cubes;
 }
 
 double predict(double x, double y, double z, const std::vector<Gaussian>& gs) {
     double val = 0.0;
     for (const auto& g : gs) {
-        double dx = x - g.x;
-        double dy = y - g.y;
-        double dz = z - g.z;
+        double dx = x - g.x, dy = y - g.y, dz = z - g.z;
         double dsq = (dx*dx)/g.l0 + (dy*dy)/g.l1 + (dz*dz)/g.l2;
         val += g.w * std::exp(-0.5 * dsq);
     }
     return val;
 }
 
+/**
+ * Smoothstep: C1 continuous interpolation (3t² - 2t³)
+ * t in [0,1] → output in [0,1]
+ */
+inline double smoothstep(double t) {
+    t = std::max(0.0, std::min(1.0, t));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+/**
+ * Calculate blend weight: 1.0 at center, fades to 0 at margin boundary
+ * Uses per-axis minimum distance to cube boundary
+ */
+double blendWeight(double px, double py, double pz,
+                   double cx, double cy, double cz,
+                   double cube_size, double margin) {
+    // Distance inside cube (positive = inside, negative = in margin)
+    double dist_x = std::min(px - cx, cx + cube_size - px);
+    double dist_y = std::min(py - cy, cy + cube_size - py);
+    double dist_z = std::min(pz - cz, cz + cube_size - pz);
+    double min_dist = std::min({dist_x, dist_y, dist_z});
+
+    if (min_dist >= 0) return 1.0;  // Inside cube core
+    if (min_dist <= -margin) return 0.0;  // Outside margin
+
+    // In margin zone: smooth falloff
+    return smoothstep(1.0 + min_dist / margin);
+}
+
 int main(int argc, char** argv) {
-    if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <input.csv> <output.ply> [threshold] [resolution] [xmin xmax ymin ymax zmin zmax]\n";
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " <config.yaml>\n";
         return 1;
     }
 
-    std::string input = argv[1];
-    std::string output = argv[2];
-    double threshold = (argc >= 4) ? std::stod(argv[3]) : 0.05;
-    double resolution = (argc >= 5) ? std::stod(argv[4]) : 0.02;
+    ReconstructionConfig cfg;
+    if (!loadConfig(argv[1], cfg)) return 1;
+    std::cout << GRN << "[INFO] Loaded config: " << argv[1] << RST << std::endl;
 
-    // Region filter
-    bool use_region = (argc >= 11);
-    double r_xmin = -1e9, r_xmax = 1e9, r_ymin = -1e9, r_ymax = 1e9, r_zmin = -1e9, r_zmax = 1e9;
-    if (use_region) {
-        r_xmin = std::stod(argv[5]); r_xmax = std::stod(argv[6]);
-        r_ymin = std::stod(argv[7]); r_ymax = std::stod(argv[8]);
-        r_zmin = std::stod(argv[9]); r_zmax = std::stod(argv[10]);
+    if (cfg.input_csv.empty() || cfg.output_ply.empty()) {
+        std::cerr << RED << "[ERROR] input_csv and output_ply required" << RST << std::endl;
+        return 1;
     }
 
-    std::vector<CubeData> cubes = loadCSV(input);
+    std::cout << CYN << "\n=== GAUSSIAN TO PLY ===" << RST << "\n"
+              << " Input:      " << cfg.input_csv << "\n"
+              << " Output:     " << cfg.output_ply << "\n"
+              << " Threshold:  " << cfg.threshold << " m\n"
+              << " Resolution: " << cfg.resolution << " m\n"
+              << " Max MAE:    " << cfg.max_mae << " m\n"
+              << " Blending:   " << (cfg.blending_enabled ? "ON" : "off") << "\n"
+              << CYN << "------------------------" << RST << "\n";
 
-    std::cout << "Loaded " << cubes.size() << " cubes.\n";
+    float file_margin = -1.0f;
+    std::vector<CubeData> cubes = loadMap(cfg.input_csv, &file_margin);
+    std::cout << "[INFO] Loaded " << cubes.size() << " cubes\n";
+
+    if (file_margin > 0.0f && cfg.blending_enabled) {
+        cfg.blending_margin = file_margin;
+    }
+
+    // Build spatial index
+    const double cube_size = 1.0;
+    std::unordered_map<std::tuple<int,int,int>, size_t, CubeKeyHash> cube_index;
+    for (size_t i = 0; i < cubes.size(); ++i) {
+        int ix = static_cast<int>(std::round(cubes[i].ox));
+        int iy = static_cast<int>(std::round(cubes[i].oy));
+        int iz = static_cast<int>(std::round(cubes[i].oz));
+        cube_index[{ix, iy, iz}] = i;
+    }
 
     pcl::PointCloud<pcl::PointXYZ> cloud;
+    const double margin = cfg.blending_margin;
+    
+    // Timing stats
+    std::atomic<size_t> total_evals{0};
+    std::atomic<size_t> progress{0};
+    std::atomic<double> total_cpu_time{0.0};  // Sum of all thread times
+    auto time_start = std::chrono::high_resolution_clock::now();
 
-    int empty_cubes = 0;
-    for (const auto& c : cubes) {
-        // Check region
-        if (c.ox < r_xmin || c.ox > r_xmax || c.oy < r_ymin || c.oy > r_ymax || c.oz < r_zmin || c.oz > r_zmax)
-            continue;
+    #pragma omp parallel
+    {
+        pcl::PointCloud<pcl::PointXYZ> local_cloud;
+        size_t local_evals = 0;
+        auto thread_start = std::chrono::high_resolution_clock::now();
 
-        size_t points_before = cloud.size();
-        for (double z = c.oz; z < c.oz + 1.0; z += resolution) {
-            for (double y = c.oy; y < c.oy + 1.0; y += resolution) {
-                for (double x = c.ox; x < c.ox + 1.0; x += resolution) {
-                    double val = predict(x, y, z, c.gaussians);
-                    if (std::abs(val) < threshold) {
-                        cloud.push_back(pcl::PointXYZ(x, y, z));
+        #pragma omp for schedule(dynamic, 10)
+        for (size_t i = 0; i < cubes.size(); ++i) {
+            const CubeData& c = cubes[i];
+            
+            // Filter by MAE
+            if (c.mae > cfg.max_mae) {
+                progress++;
+                continue;
+            }
+            
+            size_t p = ++progress;
+            if (p % 500 == 0) {
+                #pragma omp critical
+                std::cout << "\r[" << p << "/" << cubes.size() << "]" << std::flush;
+            }
+
+        if (cfg.region_enabled) {
+            if (c.ox < cfg.x_min || c.ox > cfg.x_max ||
+                c.oy < cfg.y_min || c.oy > cfg.y_max ||
+                c.oz < cfg.z_min || c.oz > cfg.z_max)
+                continue;
+        }
+
+        // Pre-fetch neighbors for this cube to avoid hash lookups per point
+        std::vector<const CubeData*> neighbors;
+        neighbors.reserve(27);
+        
+        if (cfg.blending_enabled) {
+            int ix = static_cast<int>(std::round(c.ox));
+            int iy = static_cast<int>(std::round(c.oy));
+            int iz = static_cast<int>(std::round(c.oz));
+
+            for (int dz = -1; dz <= 1; ++dz) {
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        // Skip center? No, we need it for the weighted sum if we are in the margin.
+                        // Actually, if we are in the margin of a neighbor, we blend.
+                        // If we are in the center of the current cube, we might still be in the margin of a neighbor.
+                        // So we just collect all 27 potential neighbors.
+                        
+                        auto key = std::make_tuple(ix + dx, iy + dy, iz + dz);
+                        auto it = cube_index.find(key);
+                        if (it != cube_index.end()) {
+                            neighbors.push_back(&cubes[it->second]);
+                        }
                     }
                 }
             }
         }
 
-        size_t points_added = cloud.size() - points_before;
-        if (points_added == 0) {
-            std::cout << "[WARNING] Cube at (" << c.ox << ", " << c.oy << ", " << c.oz << ") generated 0 points (Threshold: " << threshold << ")\n";
-            empty_cubes++;
+        for (double z = c.oz; z < c.oz + cube_size; z += cfg.resolution) {
+            for (double y = c.oy; y < c.oy + cube_size; y += cfg.resolution) {
+                for (double x = c.ox; x < c.ox + cube_size; x += cfg.resolution) {
+                    
+                    double val;
+
+                    if (!cfg.blending_enabled) {
+                        val = predict(x, y, z, c.gaussians);
+                    } else {
+                        // Check if point is near any edge (within margin distance)
+                        double dx_min = x - c.ox;
+                        double dx_max = c.ox + cube_size - x;
+                        double dy_min = y - c.oy;
+                        double dy_max = c.oy + cube_size - y;
+                        double dz_min = z - c.oz;
+                        double dz_max = c.oz + cube_size - z;
+                        
+                        bool near_edge = (dx_min < margin || dx_max < margin ||
+                                         dy_min < margin || dy_max < margin ||
+                                         dz_min < margin || dz_max < margin);
+
+                        if (!near_edge) {
+                            // Fast path: point is in center, only current cube contributes
+                            val = predict(x, y, z, c.gaussians);
+                        } else {
+                            // Slow path: point near edge, must blend with neighbors
+                            double weighted_sum = 0.0;
+                            double weight_total = 0.0;
+
+                            for (const auto* nb_ptr : neighbors) {
+                                const CubeData& nb = *nb_ptr;
+                                
+                                // Strict check: is the point actually within the influence zone of this neighbor?
+                                // Influence zone = [ox - margin, ox + size + margin]
+                                if (x < nb.ox - margin || x > nb.ox + cube_size + margin ||
+                                    y < nb.oy - margin || y > nb.oy + cube_size + margin ||
+                                    z < nb.oz - margin || z > nb.oz + cube_size + margin)
+                                    continue;
+
+                                double w = blendWeight(x, y, z, nb.ox, nb.oy, nb.oz, cube_size, margin);
+                                if (w > 1e-6) {
+                                    weighted_sum += w * predict(x, y, z, nb.gaussians);
+                                    weight_total += w;
+                                }
+                            }
+
+                            if (weight_total < 1e-6) continue;
+                            val = weighted_sum / weight_total;
+                        }
+                    }
+
+                    if (std::abs(val) < cfg.threshold) {
+                        local_cloud.push_back(pcl::PointXYZ(x, y, z));
+                    }
+                    ++local_evals;
+                }
+            }
         }
     }
 
-    if (empty_cubes > 0) {
-        std::cout << "Total empty cubes: " << empty_cubes << " / " << cubes.size() << "\n";
+    auto thread_end = std::chrono::high_resolution_clock::now();
+    double thread_sec = std::chrono::duration<double>(thread_end - thread_start).count();
+    
+    #pragma omp critical
+    {
+        cloud += local_cloud;
+        total_evals += local_evals;
+        double old = total_cpu_time.load();
+        while (!total_cpu_time.compare_exchange_weak(old, old + thread_sec));
     }
+    } // end parallel
+    
+    std::cout << "\r                                              \r";
+    
+    auto time_end = std::chrono::high_resolution_clock::now();
+    double wall_sec = std::chrono::duration<double>(time_end - time_start).count();
+    double cpu_sec = total_cpu_time.load();
+    double avg_us = (total_evals > 0) ? (cpu_sec * 1e6 / total_evals) : 0;
+    
+    std::cout << "[STATS] " << total_evals << " points in " 
+              << std::fixed << std::setprecision(2) << wall_sec << " s (wall), "
+              << cpu_sec << " s (CPU)\n";
+    std::cout << "[STATS] Avg CPU time per point: " << std::setprecision(3) << avg_us << " µs\n";
 
     if (cloud.empty()) {
-        std::cerr << "No points generated!\n";
+        std::cerr << RED << "[ERROR] No points generated!" << RST << std::endl;
         return 1;
     }
 
-    // Manual PLY writing for maximum compatibility (Blender, MeshLab, etc.)
-    std::ofstream ofs(output, std::ios::binary);
+    std::ofstream ofs(cfg.output_ply, std::ios::binary);
     if (!ofs) {
-        std::cerr << "Cannot open output file: " << output << "\n";
+        std::cerr << RED << "[ERROR] Cannot open: " << cfg.output_ply << RST << std::endl;
         return 1;
     }
 
-    ofs << "ply\n";
-    ofs << "format binary_little_endian 1.0\n";
-    ofs << "comment Generated by GaussianTrainer\n";
+    ofs << "ply\nformat binary_little_endian 1.0\n";
+    ofs << "comment Generated by GaussDF\n";
     ofs << "element vertex " << cloud.size() << "\n";
-    ofs << "property float x\n";
-    ofs << "property float y\n";
-    ofs << "property float z\n";
-    ofs << "end_header\n";
+    ofs << "property float x\nproperty float y\nproperty float z\nend_header\n";
 
     for (const auto& p : cloud.points) {
-        float x = p.x;
-        float y = p.y;
-        float z = p.z;
-        ofs.write(reinterpret_cast<const char*>(&x), sizeof(float));
-        ofs.write(reinterpret_cast<const char*>(&y), sizeof(float));
-        ofs.write(reinterpret_cast<const char*>(&z), sizeof(float));
+        float fx = p.x, fy = p.y, fz = p.z;
+        ofs.write(reinterpret_cast<const char*>(&fx), sizeof(float));
+        ofs.write(reinterpret_cast<const char*>(&fy), sizeof(float));
+        ofs.write(reinterpret_cast<const char*>(&fz), sizeof(float));
     }
-    ofs.close();
 
-    std::cout << "Saved " << cloud.size() << " points to " << output << "\n";
-
+    std::cout << GRN << "[SUCCESS] " << cloud.size() << " points → " << cfg.output_ply << RST << std::endl;
     return 0;
 }

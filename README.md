@@ -6,7 +6,7 @@ The resulting maps are extremely lightweight and scalable to any environment siz
 
 ## Overview
 
-GaussDF partitions 3D space into millions of 1m³ voxels (cubes) and approximates local geometry using an adaptive set of 3D Gaussians. It achieves high compression ratios (storing complex surfaces in a lightweight CSV format) while enabling fast, continuous distance queries.
+GaussDF partitions 3D space into 1m³ voxels (cubes) and approximates local geometry using an adaptive set of 3D Gaussians. It achieves high compression ratios while enabling fast, continuous distance queries.
 
 ### Key Features
 *   **Adaptive Training**: Automatically scales Gaussian count based on local geometric complexity.
@@ -15,6 +15,7 @@ GaussDF partitions 3D space into millions of 1m³ voxels (cubes) and approximate
     *   **Signed**: Surface-aware field using Felzenszwalb-based propagation (SDF).
 *   **Massive Scale Support**: Optimized for clouds with 50M+ points using multi-level KdTree structures.
 *   **Parallel Processing**: Fully multi-threaded execution via OpenMP.
+*   **External Configuration**: All parameters configurable via YAML (no recompilation needed).
 
 ## Dependencies
 
@@ -22,11 +23,12 @@ GaussDF partitions 3D space into millions of 1m³ voxels (cubes) and approximate
 *   **PCL** (Point Cloud Library)
 *   **Ceres Solver** (Non-linear optimization)
 *   **OpenMP**
+*   **yaml-cpp**
 
 ## Installation
 
 ```bash
-mkdir build && cd build
+mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 ```
@@ -35,77 +37,114 @@ make -j$(nproc)
 
 ### 1. Training (`gaussian_trainer`)
 Converts a point cloud into a Gaussian-based Distance Field model.
-```bash
-./gaussian_trainer <input> <output_base> [threads] [samples] [mode]
+
+**Configure** `config/config.yaml`:
+```yaml
+io:
+  input_file: "/path/to/pointcloud.ply"
+  output_base: "/path/to/output"
 ```
 
-### 2. Reconstruction (`gaussian_to_ply`)
-Generates a dense point cloud (isosurface) from a trained model for visualization.
+**Run**:
 ```bash
-./gaussian_to_ply <model.csv> <output.ply> [threshold] [resolution] [bounds...]
+./build/gaussian_trainer config/config.yaml
 ```
-*   `threshold`: Distance value defining the surface (default: 0.05m).
-*   `resolution`: Voxel size for reconstruction (default: 0.02m).
+
+Output: `<output_base>.csv`
+
+### 2. Reconstruction (`gaussian_to_ply`)
+Generates a dense point cloud (isosurface) from a trained model.
+
+**Configure** `config/reconstruction.yaml`:
+```yaml
+io:
+  input_csv: "/path/to/model.csv"
+  output_ply: "/path/to/output.ply"
+
+reconstruction:
+  threshold: 0.05    # Surface distance threshold (m)
+  resolution: 0.02   # Sampling resolution (m)
+```
+
+**Run**:
+```bash
+./build/gaussian_to_ply config/reconstruction.yaml
+```
+
+> **Note**: Modifying YAML files does **NOT** require recompilation.
 
 ---
 
-## Configuration
+## Configuration Reference
 
-GaussDF is highly tunable. Parameters can be adjusted via command-line arguments or directly in the source code.
+### Training (`config/config.yaml`)
 
-### 1. Internal Logic (`src/main.cpp`)
-These variables control the adaptive training and spatial search behavior:
+| Section | Parameter | Default | Description |
+|---------|-----------|---------|-------------|
+| **io** | `input_file` | `""` | Path to input pointcloud (.ply or .pcd) |
+| | `output_base` | `""` | Base name for output files |
+| **processing** | `num_threads` | `0` | OpenMP threads (0 = auto) |
+| | `cube_size` | `1.0` | Size of each cube in meters |
+| **downsampling** | `step` | `10` | Take every Nth point for coarse KdTree |
+| **trainer** | `sample_points` | `1000` | Sample points per cube |
+| | `mae_threshold_good` | `0.03` | Target MAE for "good" fit (m) |
+| | `mae_threshold_max` | `0.30` | Max MAE before discarding (m) |
+| | `edt_mode` | `"pure"` | `"pure"` (unsigned) or `"signed"` |
+| **solver** | `max_iterations` | `250` | Max optimization iterations |
+| | `max_time_seconds` | `2.0` | Time budget per cube (s) |
+| **adaptive** | `populated_steps` | `[8,16,32]` | Gaussian counts for populated cubes |
+| | `empty_steps` | `[2,4,8,16]` | Gaussian counts for empty cubes |
+| | `mae_threshold` | `0.03` | Early stopping threshold (m) |
+| | `empty_distance_threshold` | `3.0` | Max distance to train empty cubes |
+| **edt** | `voxel_size` | `0.025` | SDF grid resolution (m) |
+| | `margin_pure` | `0.0` | Grid margin for cube overlap (m) |
+| | `margin_signed` | `0.3` | Grid margin for signed mode (m) |
+| | `empty_search_margin` | `0.5` | Extra search radius for empty cubes (m) |
 
-| Variable | Default | Description |
-|---|---|---|
-| `populated_steps` | `{8, 16, 32}` | Gaussian counts tried for populated cubes. |
-| `empty_steps` | `{2, 4, 8, 16}` | Gaussian counts tried for empty cubes. |
-| `mae_threshold` | `0.03m` | Target Mean Absolute Error for early stopping. |
-| `empty_dist_threshold`| `3.0m` | Max distance from surface to train empty cubes. |
-| `search_radius_pop` | `1.5m` | Radius for gathering neighbor context in populated cubes. |
-| `search_radius_empty`| `dist + 0.5m`| Dynamic radius for gathering points in empty cubes. |
-| `edt_resolution` | `0.025m` | Resolution of the local EDT grid used for training. |
+### Reconstruction (`config/reconstruction.yaml`)
 
-### 2. Solver Parameters (`include/solver/solver.hpp`)
-Fine-tune the Ceres Solver optimization:
-
-| Parameter | Default | Description |
-|---|---|---|
-| `max_iterations` | `250` | Maximum iterations per training attempt. |
-| `max_time_seconds` | `2.0s` | Time limit for a single optimization attempt. |
-| `function_tolerance` | `1e-4` | Convergence criteria for the objective function. |
-| `use_importance_weighting`| `true/false`| Prioritizes accuracy near the surface (disabled for empty cubes). |
+| Section | Parameter | Default | Description |
+|---------|-----------|---------|-------------|
+| **io** | `input_csv` | `""` | Path to Gaussian model (.csv) |
+| | `output_ply` | `""` | Path to output PLY |
+| **reconstruction** | `threshold` | `0.05` | Surface detection threshold (m) |
+| | `resolution` | `0.02` | Voxel sampling resolution (m) |
+| **region** | `enabled` | `false` | Enable region filtering |
+| | `x_min/max, y_min/max, z_min/max` | `0.0` | Region bounds |
 
 ---
 
 ## Technical Architecture
 
-### 1. Spatial Partitioning
-The environment is divided into a 1m³ grid. Cubes are processed in parallel and classified:
-*   **Populated**: Contains raw points. Uses an adaptive set of **8, 16, or 32** Gaussians.
-*   **Empty**: No points, but within 3.0m of the surface. Uses **2, 4, 8, or 16** Gaussians.
+### Spatial Partitioning
+The environment is divided into a grid of cubes (default 1m³). Cubes are classified:
+*   **Populated**: Contains raw points. Uses **8, 16, or 32** Gaussians.
+*   **Empty**: No points, but within threshold of surface. Uses **2, 4, 8, or 16** Gaussians.
 
-### 2. Adaptive Training Pipeline
-For each cube, the system executes an iterative optimization loop:
-1.  **Context Gathering**: Fetches points within a 1.5x radius (2.6m) to ensure boundary continuity.
-2.  **EDT Generation**: Computes a local Euclidean Distance Transform grid.
-3.  **Optimization**: Uses Ceres Solver to fit Gaussian parameters $(\mu, \Sigma, w)$ to the EDT.
-4.  **Convergence**: If Mean Absolute Error (MAE) > 0.03m, the Gaussian count is increased and the fit is refined.
+### EDT Margin & Overlap
+Setting `margin_pure: 0.1` creates **20cm overlap** between adjacent cubes, improving boundary continuity for smooth interpolation.
 
-### 3. Performance Optimizations
-*   **Coarse KdTree**: A downsampled global index for fast distance checks on millions of empty cubes.
-*   **Local KdTree**: Dynamic search radius based on exact distance to minimize local tree construction overhead.
-*   **Importance Weighting**: Prioritizes surface accuracy in populated zones while ensuring global field consistency in empty regions.
+### Training Pipeline
+For each cube:
+1.  **Context Gathering**: Fetches points within extended radius (proportional to cube + margin).
+2.  **EDT Generation**: Computes local Euclidean Distance Transform grid.
+3.  **Optimization**: Ceres Solver fits Gaussian parameters (μ, Σ, w) to the EDT.
+4.  **Convergence**: If MAE > threshold, Gaussian count is increased.
 
-## Data Formats
+---
 
-### CSV (Exchange)
-A human-readable format for analysis. Each line represents a single Gaussian component:
-`CubeX,CubeY,CubeZ,MAE,StdDev,G_ID,MeanX,MeanY,MeanZ,SigmaX,SigmaY,SigmaZ,Weight`
+## Data Format (CSV)
 
-*   **CubeX, CubeY, CubeZ**: Origin of the 1m³ cube.
-*   **MAE, StdDev**: Error metrics for the entire cube.
-*   **G_ID**: Index of the Gaussian within the cube.
-*   **MeanX, MeanY, MeanZ**: Absolute position of the Gaussian center.
-*   **SigmaX, SigmaY, SigmaZ**: Standard deviations (widths) of the Gaussian.
-*   **Weight**: Weight coefficient.
+Each line represents a single Gaussian component:
+```
+CubeX,CubeY,CubeZ,MAE,StdDev,G_ID,MeanX,MeanY,MeanZ,SigmaX,SigmaY,SigmaZ,Weight
+```
+
+| Field | Description |
+|-------|-------------|
+| `CubeX,Y,Z` | Origin of the cube |
+| `MAE, StdDev` | Error metrics for the cube |
+| `G_ID` | Gaussian index within cube |
+| `MeanX,Y,Z` | Gaussian center (absolute) |
+| `SigmaX,Y,Z` | Standard deviations |
+| `Weight` | Gaussian weight |

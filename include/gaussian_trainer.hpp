@@ -26,6 +26,7 @@ struct TrainerConfig {
     EDTMode edt_mode = EDTMode::PURE;
     SolverConfig solver;
     bool positive_only = false;
+    float margin = 0.0f;
 };
 
 struct Peak {
@@ -98,10 +99,10 @@ inline std::vector<double> initializeSmartGaussians(const LocalGrid& grid,
     int iy_start = std::max(peak_radius, int((grid.cube_origin_y - grid.origin_y) / grid.voxel_size));
     int iz_start = std::max(peak_radius, int((grid.cube_origin_z - grid.origin_z) / grid.voxel_size));
     
-    int nx_cube = int(1.0 / grid.voxel_size);
-    int ix_end = std::min(grid.nx - peak_radius, ix_start + nx_cube);
-    int iy_end = std::min(grid.ny - peak_radius, iy_start + nx_cube);
-    int iz_end = std::min(grid.nz - peak_radius, iz_start + nx_cube);
+    int n_cube_voxels = int(grid.cube_size / grid.voxel_size);
+    int ix_end = std::min(grid.nx - peak_radius, ix_start + n_cube_voxels);
+    int iy_end = std::min(grid.ny - peak_radius, iy_start + n_cube_voxels);
+    int iz_end = std::min(grid.nz - peak_radius, iz_start + n_cube_voxels);
 
     for (int z = iz_start; z < iz_end; ++z) {
         for (int y = iy_start; y < iy_end; ++y) {
@@ -260,7 +261,7 @@ inline double getSdfTrilinear(const LocalGrid& grid, double x, double y, double 
     int y0 = std::max(0, std::min(int(std::floor(fy)), grid.ny - 2));
     int z0 = std::max(0, std::min(int(std::floor(fz)), grid.nz - 2));
     
-    int z1 = z0 + 1; // Define z1
+    int z1 = z0 + 1;
 
     double xd = fx - x0, yd = fy - y0, zd = fz - z0;
     xd = std::max(0.0, std::min(1.0, xd));
@@ -281,36 +282,41 @@ inline double getSdfTrilinear(const LocalGrid& grid, double x, double y, double 
 }
 
 /// Sample points from grid for training (Uniform)
-inline std::vector<GMMData> samplePointsFromGrid(const LocalGrid& grid, int n, unsigned int seed = 42) {
+/// Samples from cube + margin area (training region), not the full grid (which includes edt_extension)
+inline std::vector<GMMData> samplePointsFromGrid(const LocalGrid& grid, int n, float margin, unsigned int seed = 42) {
     std::vector<GMMData> data;
     data.reserve(n);
     std::mt19937 rng(seed);
 
-    // Define cube bounds
-    double x0 = grid.cube_origin_x, x1 = x0 + 0.99;
-    double y0 = grid.cube_origin_y, y1 = y0 + 0.99;
-    double z0 = grid.cube_origin_z, z1 = z0 + 0.99;
+    // Define sampling bounds: cube + margin (training region only)
+    // Training bounds are cube origin - margin to cube origin + cube_size + margin
+    double x0 = grid.cube_origin_x - margin;
+    double x1 = grid.cube_origin_x + grid.cube_size + margin;
+    double y0 = grid.cube_origin_y - margin;
+    double y1 = grid.cube_origin_y + grid.cube_size + margin;
+    double z0 = grid.cube_origin_z - margin;
+    double z1 = grid.cube_origin_z + grid.cube_size + margin;
 
     std::uniform_real_distribution<double> dx(x0, x1), dy(y0, y1), dz(z0, z1);
     std::uniform_real_distribution<double> jitter(-0.5, 0.5);
 
-    // Identify surface voxels (SDF < 0.1)
+    // Identify surface voxels within training region (SDF < 0.1)
     std::vector<int> surface_indices;
-    int margin = int(0.3f / grid.voxel_size);
     
-    for (int z = margin; z < grid.nz - margin; ++z) {
-        for (int y = margin; y < grid.ny - margin; ++y) {
-            for (int x = margin; x < grid.nx - margin; ++x) {
+    // Calculate voxel bounds for training region
+    int vx_start = std::max(0, int((x0 - grid.origin_x) / grid.voxel_size));
+    int vx_end = std::min(grid.nx, int((x1 - grid.origin_x) / grid.voxel_size) + 1);
+    int vy_start = std::max(0, int((y0 - grid.origin_y) / grid.voxel_size));
+    int vy_end = std::min(grid.ny, int((y1 - grid.origin_y) / grid.voxel_size) + 1);
+    int vz_start = std::max(0, int((z0 - grid.origin_z) / grid.voxel_size));
+    int vz_end = std::min(grid.nz, int((z1 - grid.origin_z) / grid.voxel_size) + 1);
+    
+    for (int z = vz_start; z < vz_end; ++z) {
+        for (int y = vy_start; y < vy_end; ++y) {
+            for (int x = vx_start; x < vx_end; ++x) {
                 int idx = grid.idx(x, y, z);
-                double wx = grid.origin_x + x * grid.voxel_size;
-                double wy = grid.origin_y + y * grid.voxel_size;
-                double wz = grid.origin_z + z * grid.voxel_size;
-
-                // Check if inside cube
-                if (wx >= x0 && wx < x1 && wy >= y0 && wy < y1 && wz >= z0 && wz < z1) {
-                    if (std::abs(grid.sdf_data[idx]) < 0.1) {
-                        surface_indices.push_back(idx);
-                    }
+                if (idx >= 0 && std::abs(grid.sdf_data[idx]) < 0.1) {
+                    surface_indices.push_back(idx);
                 }
             }
         }
@@ -335,7 +341,7 @@ inline std::vector<GMMData> samplePointsFromGrid(const LocalGrid& grid, int n, u
         }
     }
 
-    // 2. Sample uniformly
+    // 2. Sample uniformly within training bounds
     for (int i = 0; i < n_uniform; ++i) {
         double x = dx(rng), y = dy(rng), z = dz(rng);
         data.push_back({x, y, z, getSdfTrilinear(grid, x, y, z)});
@@ -362,9 +368,10 @@ inline double predictSdf(double x, double y, double z, const std::vector<double>
 
 /// Calculate MAE and std deviation
 inline void calculateMetrics(const LocalGrid& grid, const std::vector<double>& params, int ng,
-                             double& mae, double& std_dev) {
+                             double& mae, double& std_dev, float margin_val = 0.0f) {
     std::vector<double> errs;
-    int margin = int(0.3f / grid.voxel_size);
+    // Use a small safety margin (2 voxels) to avoid trilinear interpolation issues at grid boundaries
+    int margin = 2;
 
     for (int z = margin; z < grid.nz - margin; ++z)
     for (int y = margin; y < grid.ny - margin; ++y)
@@ -373,9 +380,9 @@ inline void calculateMetrics(const LocalGrid& grid, const std::vector<double>& p
         double wy = grid.origin_y + y * grid.voxel_size;
         double wz = grid.origin_z + z * grid.voxel_size;
 
-        if (wx >= grid.cube_origin_x && wx < grid.cube_origin_x + 1.0 &&
-            wy >= grid.cube_origin_y && wy < grid.cube_origin_y + 1.0 &&
-            wz >= grid.cube_origin_z && wz < grid.cube_origin_z + 1.0) {
+        if (wx >= grid.cube_origin_x - margin_val && wx < grid.cube_origin_x + grid.cube_size + margin_val &&
+            wy >= grid.cube_origin_y - margin_val && wy < grid.cube_origin_y + grid.cube_size + margin_val &&
+            wz >= grid.cube_origin_z - margin_val && wz < grid.cube_origin_z + grid.cube_size + margin_val) {
 
             double actual = grid.sdf_data[grid.idx(x, y, z)];
             double err = std::abs(predictSdf(wx, wy, wz, params, ng) - actual);
@@ -396,7 +403,7 @@ inline void calculateMetrics(const LocalGrid& grid, const std::vector<double>& p
 
 /// Train with specific number of gaussians using smart initialization
 inline TrainResult trainWithGaussians(const LocalGrid& grid, std::vector<GMMData>& data,
-                                       int num_gaussians, const SolverConfig& solver_cfg, bool positive_only) {
+                                       int num_gaussians, const SolverConfig& solver_cfg, bool positive_only, float margin = 0.0f) {
     TrainResult result;
     result.num_gaussians = num_gaussians;
     result.params = initializeSmartGaussians(grid, num_gaussians, positive_only);
@@ -404,17 +411,17 @@ inline TrainResult trainWithGaussians(const LocalGrid& grid, std::vector<GMMData
     GMMSolver solver(solver_cfg);
     solver.solve(data, result.params);
 
-    calculateMetrics(grid, result.params, num_gaussians, result.mae, result.std_dev);
+    calculateMetrics(grid, result.params, num_gaussians, result.mae, result.std_dev, margin);
     result.valid = true;
     return result;
 }
 
 /// Fixed gaussian count training
 inline TrainResult trainGaussians(const LocalGrid& grid, int num_gaussians, const TrainerConfig& cfg = {}) {
-    auto data = samplePointsFromGrid(grid, cfg.sample_points);
+    auto data = samplePointsFromGrid(grid, cfg.sample_points, cfg.margin);
     if (data.empty()) return TrainResult{};
 
-    TrainResult result = trainWithGaussians(grid, data, num_gaussians, cfg.solver, cfg.positive_only);
+    TrainResult result = trainWithGaussians(grid, data, num_gaussians, cfg.solver, cfg.positive_only, cfg.margin);
 
     if (result.mae > cfg.mae_threshold_max) {
         result.valid = false;

@@ -19,6 +19,7 @@ enum class EDTMode {
 struct LocalGrid {
     int nx, ny, nz;
     float voxel_size;
+    float cube_size;  // Size of the cube (not hardcoded to 1.0)
     float origin_x, origin_y, origin_z;
     float cube_origin_x, cube_origin_y, cube_origin_z;
     std::vector<float> sdf_data;
@@ -124,7 +125,8 @@ inline void generateEDT_Signed(LocalGrid& grid,
                                const Cube& cube,
                                const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud,
                                const pcl::KdTreeFLANN<pcl::PointXYZ>& kdtree,
-                               float margin) {
+                               float margin,
+                               float cube_size) {
     size_t total = grid.nx * grid.ny * grid.nz;
     grid.sign_data.assign(total, 1); // Default air
 
@@ -134,7 +136,7 @@ inline void generateEDT_Signed(LocalGrid& grid,
     center.y = cube.centerY();
     center.z = cube.centerZ();
 
-    float radius = std::sqrt(3.0f) * (0.5f + margin) * 1.5f;
+    float radius = std::sqrt(3.0f) * (cube_size / 2.0f + margin) * 1.5f;
     std::vector<int> indices;
     std::vector<float> dists;
     kdtree.radiusSearch(center, radius, indices, dists);
@@ -180,17 +182,24 @@ inline LocalGrid generateEDT(const Cube& cube,
                              const pcl::KdTreeFLANN<pcl::PointXYZ>& kdtree,
                              float voxel_size,
                              float margin,
+                             float cube_size,
+                             float edt_extension,
                              EDTMode mode) {
     LocalGrid grid;
     grid.voxel_size = voxel_size;
+    grid.cube_size = cube_size;
     grid.cube_origin_x = cube.origin_x;
     grid.cube_origin_y = cube.origin_y;
     grid.cube_origin_z = cube.origin_z;
-    grid.origin_x = cube.origin_x - margin;
-    grid.origin_y = cube.origin_y - margin;
-    grid.origin_z = cube.origin_z - margin;
+    
+    // Grid extends: cube + margin (for training) + edt_extension (for blending context)
+    float total_extension = margin + edt_extension;
+    grid.origin_x = cube.origin_x - total_extension;
+    grid.origin_y = cube.origin_y - total_extension;
+    grid.origin_z = cube.origin_z - total_extension;
 
-    float size = 1.0f + 2.0f * margin;
+    // Grid covers: cube_size + 2 * (margin + edt_extension)
+    float size = cube_size + 2.0f * total_extension;
     grid.nx = int(std::ceil(size / voxel_size)) + (mode == EDTMode::SIGNED ? 1 : 0);
     grid.ny = grid.nx;
     grid.nz = grid.nx;
@@ -200,7 +209,7 @@ inline LocalGrid generateEDT(const Cube& cube,
     if (mode == EDTMode::PURE) {
         generateEDT_Pure(grid, kdtree);
     } else {
-        generateEDT_Signed(grid, cube, cloud, kdtree, margin);
+        generateEDT_Signed(grid, cube, cloud, kdtree, margin, cube_size);
     }
 
     return grid;

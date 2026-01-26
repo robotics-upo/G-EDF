@@ -21,6 +21,9 @@ find_package(Ceres REQUIRED)
 # OpenMP (para paralelismo)
 find_package(OpenMP REQUIRED)
 
+# yaml-cpp (para configuración externa)
+find_package(yaml-cpp REQUIRED)
+
 # =====================================================
 # Ejecutable principal
 # =====================================================
@@ -42,6 +45,7 @@ target_link_libraries(gaussian_trainer
     ${PCL_LIBRARIES}
     Ceres::ceres
     OpenMP::OpenMP_CXX
+    yaml-cpp
 )
 
 # gaussian_to_ply only needs standard lib
@@ -52,6 +56,8 @@ target_include_directories(gaussian_to_ply PRIVATE
 
 target_link_libraries(gaussian_to_ply
     ${PCL_LIBRARIES}
+    yaml-cpp
+    OpenMP::OpenMP_CXX
 )
 
 # =====================================================

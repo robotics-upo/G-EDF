@@ -120,7 +120,7 @@ struct SolverConfig {
     double parameter_tolerance = 1e-4;
     int num_threads = 1;
     bool verbose = false;
-    bool use_importance_weighting = true; // Default to true (original behavior)
+    bool use_importance_weighting = false; // Default to true (original behavior)
 };
 
 /// GMM solver using Ceres optimizer (supports variable gaussian count)
