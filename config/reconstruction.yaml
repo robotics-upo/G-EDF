@@ -31,5 +31,5 @@ region:
 
 # Smooth Blending Between Cubes (for overlapping margins)
 blending:
-  enabled: false             # Enable smooth interpolation between adjacent cubes
+  enabled: true             # Enable smooth interpolation between adjacent cubes
 
