@@ -8,11 +8,11 @@ The resulting maps achieve **centimeter-level accuracy** (MAE < 0.03m) with high
 
 The core idea is to use a Gaussian Mixture Model (GMM) not as a probability density, but as a **function approximator**. The distance field is represented as:
 
-```
-d̂(x) = Σ wₖ · exp(-½ (x - μₖ)ᵀ Σₖ⁻¹ (x - μₖ))
-```
+$$
+\hat{d}(\mathbf{x}) = \sum_{k=1}^{K} w_k \cdot \exp\left( -\frac{1}{2} (\mathbf{x} - \boldsymbol{\mu}_k)^\top \boldsymbol{\Sigma}_k^{-1} (\mathbf{x} - \boldsymbol{\mu}_k) \right)
+$$
 
-Where each Gaussian has a weight `wₖ`, center `μₖ`, and diagonal covariance `Σₖ`. Weights can be **negative** to carve sharp valleys near surfaces.
+Where each Gaussian has a weight $w_k$, center $\boldsymbol{\mu}_k$, and diagonal covariance $\boldsymbol{\Sigma}_k$. Weights can be **negative** to carve sharp valleys near surfaces.
 
 ### Block-Sparse Architecture
 
@@ -20,7 +20,7 @@ To handle unbounded environments, the space is divided into a grid of cubes (def
 
 ### Key Features
 *   **Adaptive Complexity**: Starts with few Gaussians; adds more only if error exceeds threshold.
-*   **Analytical Gradients**: Closed-form gradient `∇d̂(x)` satisfies the Eikonal property (‖∇d̂‖ ≈ 1).
+*   **Analytical Gradients**: Closed-form gradient $\nabla \hat{d}(\mathbf{x})$ satisfies the Eikonal property ($\|\nabla \hat{d}\| \approx 1$).
 *   **Euclidean Distance Field**: Models the unsigned distance to nearest surface.
 *   **Scalable**: Processes 50M+ point clouds using multi-level KdTree and OpenMP parallelization.
 *   **YAML Configuration**: All parameters tunable without recompilation.
@@ -93,18 +93,18 @@ blending:
 
 ### Training (`config/config.yaml`)
 
-| Section          | Parameter            | Default | Description                             |
-| ---------------- | -------------------- | ------- | --------------------------------------- |
-| **io**           | `input_file`         | `""`    | Path to input pointcloud (.ply or .pcd) |
-|                  | `output_base`        | `""`    | Base name for output files              |
-|                  | `export_csv`         | `true`  | Export human-readable CSV format        |
-|                  | `export_bin`         | `true`  | Export memory-efficient binary format   |
-| **processing**   | `num_threads`        | `0`     | OpenMP threads (0 = auto)               |
-|                  | `cube_size`          | `1.0`   | Size of each cube in meters             |
-| **downsampling** | `step`               | `10`    | Take every Nth point for coarse KdTree  |
-| **trainer**      | `sample_points`      | `1000`  | Sample points per cube                  |
-|                  | `mae_threshold_good` | `0.03`  | Target MAE for "good" fit (m)           |
-|                  | `mae_threshold_max`  | `0.30`  | Max MAE before discarding (m)           |
+| Section          | Parameter                  | Default      | Description                             |
+| ---------------- | -------------------------- | ------------ | --------------------------------------- |
+| **io**           | `input_file`               | `""`         | Path to input pointcloud (.ply or .pcd) |
+|                  | `output_base`              | `""`         | Base name for output files              |
+|                  | `export_csv`               | `true`       | Export human-readable CSV format        |
+|                  | `export_bin`               | `true`       | Export memory-efficient binary format   |
+| **processing**   | `num_threads`              | `0`          | OpenMP threads (0 = auto)               |
+|                  | `cube_size`                | `1.0`        | Size of each cube in meters             |
+| **downsampling** | `step`                     | `10`         | Take every Nth point for coarse KdTree  |
+| **trainer**      | `sample_points`            | `1000`       | Sample points per cube                  |
+|                  | `mae_threshold_good`       | `0.03`       | Target MAE for "good" fit (m)           |
+|                  | `mae_threshold_max`        | `0.30`       | Max MAE before discarding (m)           |
 | **solver**       | `max_iterations`           | `200`        | Max optimization iterations             |
 |                  | `max_time_seconds`         | `0.3`        | Time budget per cube (s)                |
 | **adaptive**     | `populated_steps`          | `[8,16,32]`  | Gaussian counts for populated cubes     |
@@ -138,17 +138,17 @@ blending:
 For each cube:
 1.  **EDT Generation**: Computes a local high-resolution Euclidean Distance Transform (EDT) grid.
 2.  **Initialization**: Non-Maximum Suppression (NMS) identifies local extrema for Gaussian placement.
-3.  **Optimization**: Levenberg-Marquardt (Ceres Solver) fits parameters `{wₖ, μₖ, Σₖ}` to minimize squared error.
+3.  **Optimization**: Levenberg-Marquardt (Ceres Solver) fits parameters $\{w_k, \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k\}$ to minimize squared error.
 4.  **Adaptive Refinement**: If MAE exceeds threshold, Gaussian count increases and optimization repeats.
 
 ### Blending Strategy
 To ensure C¹ continuity across cube boundaries, overlapping regions are blended using **Smoothstep**:
 
-```
-α(t) = 3t² - 2t³,  t ∈ [0,1]
-```
+$$
+\alpha(t) = 3t^2 - 2t^3, \quad t \in [0,1]
+$$
 
-Since `α'(0) = α'(1) = 0`, gradients transition smoothly without artifacts. The final field at a point is the weighted average of contributing cubes based on their distance to cube boundaries.
+Since $\alpha'(0) = \alpha'(1) = 0$, gradients transition smoothly without artifacts. The final field at a point is the weighted average of contributing cubes based on their distance to cube boundaries.
 
 ---
 
