@@ -1,37 +1,37 @@
 # G-EDF: Block-Sparse Gaussian Distance Fields
 
-G-EDF is a C++ framework for representing large-scale 3D environments as a **continuous, memory-efficient distance field**. Unlike voxel grids or octrees, this approach models the Euclidean Distance Field (EDF) using a **Block-Sparse Gaussian Mixture Model**, where anisotropic Gaussians serve as universal function approximators.
+G-EDF is a C++ framework for representing large-scale 3D environments as a **continuous, memory-efficient distance field**. Unlike voxel grids or octrees, this approach models the Euclidean Distance Field (EDF) using a Block-Sparse Gaussian Mixture Model, where anisotropic Gaussians serve as universal function approximators.
 
-The resulting maps achieve **centimeter-level accuracy** (MAE < 0.03m) with high compression ratios, enabling gradient-based localization and navigation tasks on CPU.
+The resulting maps achieve centimeter-level accuracy (MAE < 0.03m) with high compression ratios, enabling gradient-based localization and navigation tasks on CPU.
 
 ## How It Works
 
-The core idea is to use a Gaussian Mixture Model (GMM) not as a probability density, but as a **function approximator**. The distance field is represented as:
+The core idea is to use a Gaussian Mixture Model (GMM) not as a probability density, but as a function approximator. The distance field is represented as:
 
 $$
 \hat{d}(\mathbf{x}) = \sum_{k=1}^{K} w_k \cdot \exp\left( -\frac{1}{2} (\mathbf{x} - \boldsymbol{\mu}_k)^\top \boldsymbol{\Sigma}_k^{-1} (\mathbf{x} - \boldsymbol{\mu}_k) \right)
 $$
 
-Where each Gaussian has a weight $w_k$, center $\boldsymbol{\mu}_k$, and diagonal covariance $\boldsymbol{\Sigma}_k$. Weights can be **negative** to carve sharp valleys near surfaces.
+Where each Gaussian has a weight $w_k$, center $\boldsymbol{\mu}_k$, and diagonal covariance $\boldsymbol{\Sigma}_k$. Weights can be negative to carve sharp valleys near surfaces.
 
 ### Block-Sparse Architecture
 
-To handle unbounded environments, the space is divided into a grid of cubes (default 1m³). Each cube trains an independent local GMM against its Euclidean Distance Transform (EDT). Adjacent cubes share an **overlap margin** and are blended using a **Smoothstep function** to guarantee global **C¹ continuity**, eliminating boundary artifacts.
+To handle unbounded environments, the space is divided into a grid of cubes (default 1m³). Each cube trains an independent local GMM against its Euclidean Distance Transform (EDT). Adjacent cubes share an overlap margin and are blended using a Smoothstep function to guarantee global C¹ continuity, eliminating boundary artifacts.
 
 ### Key Features
-*   **Adaptive Complexity**: Starts with few Gaussians; adds more only if error exceeds threshold.
-*   **Analytical Gradients**: Closed-form gradient $\nabla \hat{d}(\mathbf{x})$ satisfies the Eikonal property ($\|\nabla \hat{d}\| \approx 1$).
-*   **Euclidean Distance Field**: Models the unsigned distance to nearest surface.
-*   **Scalable**: Processes 50M+ point clouds using multi-level KdTree and OpenMP parallelization.
-*   **YAML Configuration**: All parameters tunable without recompilation.
+*   Adaptive Complexity: Starts with few Gaussians; adds more only if error exceeds threshold.
+*   Analytical Gradients: Closed-form gradient $\nabla \hat{d}(\mathbf{x})$ satisfies the Eikonal property ($\|\nabla \hat{d}\| \approx 1$).
+*   Euclidean Distance Field: Models the unsigned distance to nearest surface.
+*   Scalable: Processes 50M+ point clouds using multi-level KdTree and OpenMP parallelization.
+*   YAML Configuration: All parameters tunable without recompilation.
 
 ## Dependencies
 
-*   **C++17**
-*   **PCL** (Point Cloud Library)
-*   **Ceres Solver** (Non-linear optimization)
-*   **OpenMP**
-*   **yaml-cpp**
+*   C++17
+*   PCL (Point Cloud Library)
+*   Ceres Solver (Non-linear optimization)
+*   OpenMP
+*   yaml-cpp
 
 ## Installation
 
@@ -136,13 +136,13 @@ blending:
 
 ### Training Pipeline
 For each cube:
-1.  **EDT Generation**: Computes a local high-resolution Euclidean Distance Transform (EDT) grid.
-2.  **Initialization**: Non-Maximum Suppression (NMS) identifies local extrema for Gaussian placement.
-3.  **Optimization**: Levenberg-Marquardt (Ceres Solver) fits parameters $\{w_k, \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k\}$ to minimize squared error.
-4.  **Adaptive Refinement**: If MAE exceeds threshold, Gaussian count increases and optimization repeats.
+1.  EDT Generation: Computes a local high-resolution Euclidean Distance Transform (EDT) grid.
+2.  Initialization: Non-Maximum Suppression (NMS) identifies local extrema for Gaussian placement.
+3.  Optimization: Levenberg-Marquardt (Ceres Solver) fits parameters $\{w_k, \boldsymbol{\mu}_k, \boldsymbol{\Sigma}_k\}$ to minimize squared error.
+4.  Adaptive Refinement: If MAE exceeds threshold, Gaussian count increases and optimization repeats.
 
 ### Blending Strategy
-To ensure C¹ continuity across cube boundaries, overlapping regions are blended using **Smoothstep**:
+To ensure C¹ continuity across cube boundaries, overlapping regions are blended using Smoothstep:
 
 $$
 \alpha(t) = 3t^2 - 2t^3, \quad t \in [0,1]
@@ -173,8 +173,8 @@ CubeX,CubeY,CubeZ,MAE,StdDev,G_ID,MeanX,MeanY,MeanZ,SigmaX,SigmaY,SigmaZ,Weight
 
 ### Binary Format (`.bin`)
 Memory-efficient packed format optimized for fast loading. Contains:
-- **MapHeader**: Magic bytes (`GDF1`), version, cube count, bounds, and training parameters
-- **CubeHeader[]**: Per-cube origin, MAE, and Gaussian count
-- **GaussianData[]**: Packed Gaussian parameters (mean, sigma, weight)
+- MapHeader: Magic bytes (`GDF1`), version, cube count, bounds, and training parameters
+- CubeHeader[]: Per-cube origin, MAE, and Gaussian count
+- GaussianData[]: Packed Gaussian parameters (mean, sigma, weight)
 
 > **Recommendation**: Use `.bin` for production deployments and `.csv` for debugging.
