@@ -1,4 +1,13 @@
-# G-EDF: Block-Sparse Gaussian Distance Fields
+<h1 align="center">G-EDF: Block-Sparse Gaussian Distance Fields</h1>
+
+<div align="center">
+  <a href="#"><img src="https://img.shields.io/badge/Project-Website-007acc" alt="Project Website"></a>
+  &nbsp;
+  <a href="#"><img src="https://img.shields.io/badge/YouTube-Video-red?logo=youtube" alt="YouTube Video"></a>
+  &nbsp;
+  <a href="#"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv" alt="arXiv Paper"></a>
+</div>
+
 
 **G-EDF** is a high-performance C++ framework for modeling large-scale 3D environments as **continuous, memory-efficient Euclidean Distance Fields (EDF)**.
 
