@@ -139,6 +139,7 @@ int main(int argc, char** argv) {
 
     std::atomic<size_t> done(0), valid(0), discarded(0);
     std::atomic<double> sum_mae(0.0);
+    std::atomic<double> sum_std_dev(0.0);
     auto t1 = std::chrono::high_resolution_clock::now();
 
     // Get cube infos for parallel processing
@@ -331,8 +332,11 @@ int main(int argc, char** argv) {
         size_t n = ++done;
         if (result.valid) {
             valid++;
-            double old = sum_mae.load();
-            while (!sum_mae.compare_exchange_weak(old, old + result.mae));
+            double old_mae = sum_mae.load();
+            while (!sum_mae.compare_exchange_weak(old_mae, old_mae + result.mae));
+
+            double old_std = sum_std_dev.load();
+            while (!sum_std_dev.compare_exchange_weak(old_std, old_std + result.std_dev));
 
             // Write to selected formats
             if (csv_exporter) csv_exporter->writeCube(cube, result, result.num_gaussians);
@@ -364,10 +368,11 @@ int main(int argc, char** argv) {
     
     // Finalize binary file with stats
     double avg_mae = valid > 0 ? sum_mae.load() / valid : 0.0;
+    double avg_std_dev = valid > 0 ? sum_std_dev.load() / valid : 0.0;
     if (bin_exporter) {
         bin_exporter->finalize(
             static_cast<float>(avg_mae), 
-            0.0f, // Global std_dev not tracked yet
+            static_cast<float>(avg_std_dev), // Global std_dev
             app_cfg.cube_size,
             app_cfg.edt_mode == EDTMode::SIGNED ? app_cfg.margin_signed : app_cfg.margin_pure,
             app_cfg.empty_search_margin

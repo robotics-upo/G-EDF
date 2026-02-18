@@ -1,8 +1,13 @@
 # G-EDF: Block-Sparse Gaussian Distance Fields
 
-G-EDF is a C++ framework for representing large-scale 3D environments as a **continuous, memory-efficient distance field**. Unlike voxel grids or octrees, this approach models the Euclidean Distance Field (EDF) using a Block-Sparse Gaussian Mixture Model, where anisotropic Gaussians serve as universal function approximators.
+**G-EDF** is a high-performance C++ framework for modeling large-scale 3D environments as **continuous, memory-efficient Euclidean Distance Fields (EDF)**.
 
-The resulting maps achieve centimeter-level accuracy (MAE < 0.03m) with high compression ratios, enabling gradient-based localization and navigation tasks on CPU.
+By leveraging a **Block-Sparse Gaussian Mixture Model**, G-EDF overcomes the limitations of discrete voxel grids, offering:
+
+*   **Continuous Representation**: Infinite resolution with analytical gradients ($\|\nabla \hat{d}\| \approx 1$).
+*   **High Compression**: Represents complex geometry with fewer parameters.
+*   **CPU-Optimized**: Efficient parallel training and querying on standard CPUs.
+*   **Precision**: Centimeter-level accuracy (MAE < 0.03m) for reliable navigation and physics.
 
 ## How It Works
 
@@ -11,6 +16,7 @@ The core idea is to use a Gaussian Mixture Model (GMM) not as a probability dens
 $$
 \hat{d}(\mathbf{x}) = \sum_{k=1}^{K} w_k \cdot \exp\left( -\frac{1}{2} (\mathbf{x} - \boldsymbol{\mu}_k)^\top \boldsymbol{\Sigma}_k^{-1} (\mathbf{x} - \boldsymbol{\mu}_k) \right)
 $$
+
 
 Where each Gaussian has a weight $w_k$, center $\boldsymbol{\mu}_k$, and diagonal covariance $\boldsymbol{\Sigma}_k$. Weights can be negative to carve sharp valleys near surfaces.
 
@@ -148,6 +154,7 @@ $$
 \alpha(t) = 3t^2 - 2t^3, \quad t \in [0,1]
 $$
 
+
 Since $\alpha'(0) = \alpha'(1) = 0$, gradients transition smoothly without artifacts. The final field at a point is the weighted average of contributing cubes based on their distance to cube boundaries.
 
 ---
@@ -155,6 +162,34 @@ Since $\alpha'(0) = \alpha'(1) = 0$, gradients transition smoothly without artif
 ## Data Formats
 
 G-EDF supports two output formats:
+
+### Binary Format (`.bin`)
+Memory-efficient packed format optimized for fast loading. Contains:
+- **MapHeader**: Magic bytes (`GDF1`), version, cube count, bounds, and training parameters
+- **CubeHeader[]**: Per-cube origin, MAE, and Gaussian count
+- **GaussianData[]**: Packed Gaussian parameters (mean, sigma, weight)
+
+A comprehensive reference script is provided to parse `.bin` files, document the format, and inspect model internals.
+
+1. **Inspect a GDF1 file:**
+   
+    Loads the binary map and prints:
+   - **Header Metadata**: Version, global MAE/StdDev, bounding box, and parameters.
+   - **Data Sample**: Detailed metrics and Gaussian parameters for the first cube (for debugging).
+
+    ```bash
+    python3 scripts/gdf1_loader_reference.py /path/to/map.bin
+    ```
+  
+
+2. **View Format Specification & Integration Guide:**
+
+    Prints the detailed **Binary Format Specification** (byte-level layout) and a **Implementation Guide** with Python code snippets showing how to mathematically query the distance field (including the blending logic). Use this if you need to implement a loader in another language.Ç
+
+   ```bash
+   python3 scripts/gdf1_loader_reference.py
+   ```
+   
 
 ### CSV Format (`.csv`)
 Human-readable format for debugging and visualization. Each line represents a single Gaussian:
@@ -170,11 +205,3 @@ CubeX,CubeY,CubeZ,MAE,StdDev,G_ID,MeanX,MeanY,MeanZ,SigmaX,SigmaY,SigmaZ,Weight
 | `MeanX,Y,Z`   | Gaussian center (absolute) |
 | `SigmaX,Y,Z`  | Standard deviations        |
 | `Weight`      | Gaussian weight            |
-
-### Binary Format (`.bin`)
-Memory-efficient packed format optimized for fast loading. Contains:
-- **MapHeader**: Magic bytes (`GDF1`), version, cube count, bounds, and training parameters
-- **CubeHeader[]**: Per-cube origin, MAE, and Gaussian count
-- **GaussianData[]**: Packed Gaussian parameters (mean, sigma, weight)
-
-> **Recommendation**: Use `.bin` for production deployments and `.csv` for debugging.

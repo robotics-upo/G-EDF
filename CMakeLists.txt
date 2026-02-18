@@ -5,27 +5,27 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE Release)
 
-# Opciones de optimización
+# Optimization options
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
 
 # =====================================================
-# Dependencias
+# Dependencies
 # =====================================================
 
 # PCL (Point Cloud Library)
 find_package(PCL REQUIRED COMPONENTS common io kdtree filters)
 
-# Ceres Solver (para optimización de Gaussianas)
+# Ceres Solver (for Gaussian optimization)
 find_package(Ceres REQUIRED)
 
-# OpenMP (para paralelismo)
+# OpenMP (for parallelism)
 find_package(OpenMP REQUIRED)
 
-# yaml-cpp (para configuración externa)
+# yaml-cpp (for external configuration)
 find_package(yaml-cpp REQUIRED)
 
 # =====================================================
-# Ejecutable principal
+# Main Executable
 # =====================================================
 
 add_executable(gaussian_trainer 
@@ -60,13 +60,29 @@ target_link_libraries(gaussian_to_ply
     OpenMP::OpenMP_CXX
 )
 
+# evaluate_gdf1 evaluator
+add_executable(evaluate_gdf1
+    src/evaluate_gdf1.cpp
+)
+
+target_include_directories(evaluate_gdf1 PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${PCL_INCLUDE_DIRS}
+)
+
+target_link_libraries(evaluate_gdf1
+    ${PCL_LIBRARIES}
+    OpenMP::OpenMP_CXX
+)
+
 # =====================================================
-# Mensaje de configuración
+# =====================================================
+# Configuration Message
 # =====================================================
 
 message(STATUS "")
 message(STATUS "=======================================")
-message(STATUS " GAUSSIAN TRAINER - Configuración")
+message(STATUS " GAUSSIAN TRAINER - Configuration")
 message(STATUS "=======================================")
 message(STATUS " PCL Version: ${PCL_VERSION}")
 message(STATUS " Ceres Found: ${Ceres_FOUND}")
