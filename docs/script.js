@@ -34,6 +34,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     top: targetPosition,
                     behavior: 'smooth'
                 });
+
+                // Close mobile menu if open
+                const navLinks = document.getElementById('navLinks');
+                const hamburger = document.getElementById('hamburgerBtn');
+                if (navLinks && navLinks.classList.contains('open')) {
+                    navLinks.classList.remove('open');
+                    hamburger.classList.remove('active');
+                }
             }
         });
     });
@@ -42,7 +50,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (typeof katex !== 'undefined') {
         const eq1 = document.getElementById('eq1');
         if (eq1) {
-            // Build formula with separate spans grouped into logical blocks
             eq1.innerHTML = `
                 <span class="eq-block">
                     <span class="hl-formula" data-hl="dhat"></span>
@@ -63,13 +70,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 </span>
             `;
 
-            // Render main KaTeX parts
             katex.render('\\hat{d}(\\mathbf{x})', eq1.querySelector('[data-hl="dhat"]'), { throwOnError: false });
             katex.render('\\displaystyle\\sum_{k=1}^{K}', eq1.querySelector('[data-hl="sum"]'), { throwOnError: false });
             katex.render('w_k', eq1.querySelector('[data-hl="wk"]'), { throwOnError: false });
             katex.render('\\tfrac{1}{2}', eq1.querySelector('.frac'), { throwOnError: false });
 
-            // Render mu and sigma (there are two mu spans)
             const muSpans = eq1.querySelectorAll('[data-hl="mu"]');
             muSpans.forEach(span => {
                 katex.render('\\boldsymbol{\\mu}_k', span, { throwOnError: false });
@@ -99,7 +104,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Run after KaTeX renders
     setTimeout(setupHighlighting, 100);
 
     // Copy button functionality
@@ -154,10 +158,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (viewToggle && options.length >= 2) {
-        // Initial position
         setTimeout(() => updateIndicator(options[0]), 10);
 
-        // Click on options
         options.forEach(opt => {
             opt.addEventListener('click', function () {
                 const isGradient = this.dataset.value === 'gradient';
@@ -166,9 +168,152 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
 
-        // Checkbox change
         viewToggle.addEventListener('change', function () {
             setActiveOption(this.checked);
+        });
+    }
+
+    // ========================================
+    // Image Carousel (Snail dataset)
+    // ========================================
+    const slides = document.querySelectorAll('.carousel-slide');
+    const dots = document.querySelectorAll('.carousel-dot');
+    const prevBtn = document.getElementById('carouselPrev');
+    const nextBtn = document.getElementById('carouselNext');
+    let currentSlide = 0;
+    let autoplayTimer = null;
+
+    function goToSlide(index) {
+        if (slides.length === 0) return;
+        slides[currentSlide].classList.remove('active');
+        dots[currentSlide].classList.remove('active');
+        currentSlide = (index + slides.length) % slides.length;
+        slides[currentSlide].classList.add('active');
+        dots[currentSlide].classList.add('active');
+    }
+
+    function nextSlide() {
+        goToSlide(currentSlide + 1);
+    }
+
+    function prevSlide() {
+        goToSlide(currentSlide - 1);
+    }
+
+    function startAutoplay() {
+        stopAutoplay();
+        autoplayTimer = setInterval(nextSlide, 4500);
+    }
+
+    function stopAutoplay() {
+        if (autoplayTimer) {
+            clearInterval(autoplayTimer);
+            autoplayTimer = null;
+        }
+    }
+
+    if (prevBtn && nextBtn) {
+        prevBtn.addEventListener('click', () => {
+            prevSlide();
+            startAutoplay(); // Reset autoplay on interaction
+        });
+        nextBtn.addEventListener('click', () => {
+            nextSlide();
+            startAutoplay();
+        });
+    }
+
+    dots.forEach(dot => {
+        dot.addEventListener('click', function () {
+            goToSlide(parseInt(this.dataset.index));
+            startAutoplay();
+        });
+    });
+
+    // Start autoplay
+    if (slides.length > 1) {
+        startAutoplay();
+    }
+
+    // ========================================
+    // Hamburger Mobile Menu
+    // ========================================
+    const hamburger = document.getElementById('hamburgerBtn');
+    const navLinks = document.getElementById('navLinks');
+
+    if (hamburger && navLinks) {
+        hamburger.addEventListener('click', function () {
+            this.classList.toggle('active');
+            navLinks.classList.toggle('open');
+        });
+
+        // Close on outside click
+        document.addEventListener('click', function (e) {
+            if (navLinks.classList.contains('open') &&
+                !navLinks.contains(e.target) &&
+                !hamburger.contains(e.target)) {
+                navLinks.classList.remove('open');
+                hamburger.classList.remove('active');
+            }
+        });
+    }
+
+    // ========================================
+    // Scroll-Reveal Animation
+    // ========================================
+    const revealElements = document.querySelectorAll('[data-reveal]');
+
+    if (revealElements.length > 0) {
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('revealed');
+                    revealObserver.unobserve(entry.target);
+                }
+            });
+        }, {
+            threshold: 0.12,
+            rootMargin: '0px 0px -40px 0px'
+        });
+
+        revealElements.forEach(el => revealObserver.observe(el));
+    }
+
+    // ========================================
+    // Lightbox
+    // ========================================
+    const lightboxOverlay = document.getElementById('lightboxOverlay');
+    const lightboxImg = document.getElementById('lightboxImg');
+    const lightboxClose = document.getElementById('lightboxClose');
+
+    if (lightboxOverlay && lightboxImg) {
+        // Make all result images and carousel images clickable
+        const clickableImages = document.querySelectorAll('.images-row img, .carousel-slide img');
+
+        clickableImages.forEach(img => {
+            img.style.cursor = 'zoom-in';
+            img.addEventListener('click', function () {
+                lightboxImg.src = this.src;
+                lightboxImg.alt = this.alt;
+                lightboxOverlay.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            });
+        });
+
+        function closeLightbox() {
+            lightboxOverlay.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        lightboxClose.addEventListener('click', closeLightbox);
+        lightboxOverlay.addEventListener('click', function (e) {
+            if (e.target === this) closeLightbox();
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && lightboxOverlay.classList.contains('active')) {
+                closeLightbox();
+            }
         });
     }
 });

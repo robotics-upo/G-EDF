@@ -1,11 +1,11 @@
 <h1 align="center">G-EDF: Block-Sparse Gaussian Distance Fields</h1>
 
 <div align="center">
-  <a href="#"><img src="https://img.shields.io/badge/Project-Website-007acc" alt="Project Website"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Project-Website-007acc?style=flat" alt="Project Website"></a>
   &nbsp;
-  <a href="#"><img src="https://img.shields.io/badge/YouTube-Video-red?logo=youtube" alt="YouTube Video"></a>
+  <a href="#"><img src="https://img.shields.io/badge/YouTube-Video-red?style=flat&logo=youtube" alt="YouTube Video"></a>
   &nbsp;
-  <a href="#"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?logo=arxiv" alt="arXiv Paper"></a>
+  <a href="#"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?style=flat&logo=arxiv" alt="arXiv Paper"></a>
 </div>
 
 

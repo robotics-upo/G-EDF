@@ -21,7 +21,10 @@
     <nav class="navbar">
         <div class="nav-container">
             <a href="#" class="nav-logo">G-EDF</a>
-            <div class="nav-links">
+            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">
+                <span></span><span></span><span></span>
+            </button>
+            <div class="nav-links" id="navLinks">
                 <a href="#abstract">Abstract</a>
                 <a href="#method">Method</a>
                 <a href="#results">Results</a>
@@ -49,7 +52,7 @@
     </nav>
 
     <!-- Hero Section -->
-    <header class="hero">
+    <header class="hero hero-animated">
         <div class="hero-content">
             <h1 class="hero-title">G-EDF</h1>
             <p class="hero-subtitle">Continuous Distance Field Representation using<br>Block-Sparse Gaussian Mixture
@@ -91,23 +94,62 @@
         </div>
     </header>
 
-    <!-- Abstract Section -->
-    <section id="abstract" class="section">
-        <div class="container container-narrow">
-            <h2 class="section-title">Abstract</h2>
-            <p class="abstract-text">
-                We present <strong>G-EDF</strong>, a novel framework for representing large-scale 3D environments as a
-                continuous, memory-efficient distance field. The Euclidean Distance Field (EDF) is modeled using a
-                <strong>Block-Sparse Gaussian Mixture Model</strong>, where anisotropic Gaussians serve as universal
-                function approximators. The space is partitioned into adaptive blocks that are seamlessly blended to
-                guarantee global <strong>C<sup>1</sup> continuity</strong>. The result is a highly compressed map
-                enabling efficient CPU-based inference for gradient-based localization and navigation.
-            </p>
+    <!-- Abstract Section with Image Carousel -->
+    <section id="abstract" class="section" data-reveal>
+        <div class="container abstract-layout">
+            <!-- Image Carousel -->
+            <div class="abstract-carousel">
+                <div class="carousel-viewport">
+                    <div class="carousel-track" id="carouselTrack">
+                        <div class="carousel-slide active">
+                            <img src="media/snail_top_view.png" alt="Snail dataset — Top view of 3D environment">
+                        </div>
+                        <div class="carousel-slide">
+                            <img src="media/snail_detail_1.png" alt="Snail dataset — Urban detail view 1">
+                        </div>
+                        <div class="carousel-slide">
+                            <img src="media/snail_detail_2.png" alt="Snail dataset — Urban detail view 2">
+                        </div>
+                    </div>
+                    <button class="carousel-arrow carousel-prev" id="carouselPrev" aria-label="Previous image">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
+                    <button class="carousel-arrow carousel-next" id="carouselNext" aria-label="Next image">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 6 15 12 9 18"></polyline>
+                        </svg>
+                    </button>
+                    <div class="carousel-dots" id="carouselDots">
+                        <span class="carousel-dot active" data-index="0"></span>
+                        <span class="carousel-dot" data-index="1"></span>
+                        <span class="carousel-dot" data-index="2"></span>
+                    </div>
+                </div>
+                <span class="carousel-caption">Snail Dataset</span>
+            </div>
+
+            <!-- Abstract Text -->
+            <div class="abstract-content">
+                <h2 class="section-title">Abstract</h2>
+                <p class="abstract-text">
+                    We present <strong>G-EDF</strong>, a novel framework for representing large-scale 3D environments as
+                    a
+                    continuous, memory-efficient distance field. The Euclidean Distance Field (EDF) is modeled using a
+                    <strong>Block-Sparse Gaussian Mixture Model</strong>, where anisotropic Gaussians serve as universal
+                    function approximators. The space is partitioned into adaptive blocks that are seamlessly blended to
+                    guarantee global <strong>C<sup>1</sup> continuity</strong>. The result is a highly compressed map
+                    enabling efficient CPU-based inference for gradient-based localization and navigation.
+                </p>
+            </div>
         </div>
     </section>
 
     <!-- Method Section -->
-    <section id="method" class="section section-alt">
+    <section id="method" class="section section-alt" data-reveal>
         <div class="container">
             <h2 class="section-title">Method</h2>
 
@@ -195,7 +237,7 @@
     </section>
 
     <!-- Results Section -->
-    <section id="results" class="section">
+    <section id="results" class="section" data-reveal>
         <div class="container">
             <h2 class="section-title">Results</h2>
 
@@ -244,13 +286,13 @@
                 </div>
             </div>
 
-            <div class="metrics-container">
+            <div class="metrics-container" data-reveal>
                 <div class="metric-item">
-                    <span class="metric-value">&lt; 3cm</span>
+                    <span class="metric-value" data-count="&lt; 3cm">&lt; 3cm</span>
                     <span class="metric-label">Mean Absolute Error</span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-value">≈ 1.0</span>
+                    <span class="metric-value" data-count="≈ 1.0">≈ 1.0</span>
                     <span class="metric-label">Gradient Magnitude</span>
                 </div>
             </div>
@@ -258,7 +300,7 @@
     </section>
 
     <!-- Code Section -->
-    <section id="code" class="section section-alt">
+    <section id="code" class="section section-alt" data-reveal>
         <div class="container container-narrow">
             <h2 class="section-title">Code</h2>
 
@@ -322,6 +364,18 @@ make -j$(nproc)</code></pre>
             </div>
         </div>
     </footer>
+
+    <!-- Lightbox overlay -->
+    <div class="lightbox-overlay" id="lightboxOverlay">
+        <button class="lightbox-close" id="lightboxClose" aria-label="Close">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+        <img id="lightboxImg" src="" alt="Enlarged view">
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script src="script.js"></script>
