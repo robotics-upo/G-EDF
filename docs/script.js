@@ -190,6 +190,12 @@ document.addEventListener('DOMContentLoaded', function () {
         currentSlide = (index + slides.length) % slides.length;
         slides[currentSlide].classList.add('active');
         dots[currentSlide].classList.add('active');
+
+        // Update caption
+        const captionObj = document.getElementById('carouselCaption');
+        if (captionObj) {
+            captionObj.textContent = slides[currentSlide].dataset.caption || '';
+        }
     }
 
     function nextSlide() {
@@ -316,4 +322,33 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
+
+    // ========================================
+    // Citation Copy
+    // ========================================
+
+    // Copy buttons for citations
+    const citationCopyBtns = document.querySelectorAll('.citation-block .copy-btn');
+
+    citationCopyBtns.forEach(btn => {
+        btn.addEventListener('click', async function () {
+            const block = this.closest('.citation-block');
+            const codeContent = block.querySelector('.cite-content').textContent;
+
+            try {
+                await navigator.clipboard.writeText(codeContent);
+                const copyText = this.querySelector('.copy-text');
+                copyText.textContent = 'Copied!';
+                this.classList.add('copied');
+
+                setTimeout(() => {
+                    copyText.textContent = 'Copy';
+                    this.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+            }
+        });
+    });
 });
+
