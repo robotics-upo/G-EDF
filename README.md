@@ -53,6 +53,35 @@ To handle unbounded environments, the space is divided into a grid of cubes (def
 
 ## Installation
 
+We highly recommend using Docker to avoid dependency issues and ensure consistency. If you prefer to install locally, see the section below.
+
+### 1. Using Docker (Recommended)
+
+A `Dockerfile` is provided to set up an environment with all dependencies pre-installed, including Ceres Solver with QuaternionManifold support.
+
+**Step 1: Build the Docker image**
+```bash
+docker build -t g-edf .
+```
+
+**Step 2: Run the container**
+```bash
+docker run -it \
+  --name g_edf_container \
+  g-edf
+```
+
+**Step 3: Build the project inside the container**
+```bash
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
+
+### 2. Local Installation
+
+If you prefer to install natively, ensure you have all the required dependencies installed on your system (C++17, PCL, Ceres Solver >= 2.1.0, OpenMP, yaml-cpp).
+
 ```bash
 mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
