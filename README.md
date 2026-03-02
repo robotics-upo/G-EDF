@@ -12,6 +12,12 @@
 
 <br>
 
+> [!NOTE]
+> 🗺️ **Looking for the Localization system?**
+> The localization system based on this mapping framework is available at: [robotics-upo/G-EDF-Loc](https://github.com/robotics-upo/G-EDF-Loc).
+
+<br>
+
 **G-EDF** is a high-performance C++ framework for modeling large-scale 3D environments as **continuous, memory-efficient Euclidean Distance Fields (EDF)**.
 
 By leveraging a **Block-Sparse Gaussian Mixture Model**, G-EDF overcomes the limitations of discrete voxel grids, offering:
