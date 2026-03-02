@@ -68,7 +68,7 @@ RUN mkdir -p input output src
 
 # Clone G-ED repository
 WORKDIR /home/$USERNAME/workspace/src
-RUN git clone https://github.com/robotics-upo/G-ED.git
+RUN git clone https://github.com/robotics-upo/G-EDF.git
 
 # Go back to workspace root
 WORKDIR /home/$USERNAME/workspace
