@@ -13,8 +13,7 @@
 <br>
 
 > [!NOTE]
-> 🗺️ **Looking for the Localization system?**
-> The localization system based on this mapping framework is available at: [robotics-upo/G-EDF-Loc](https://github.com/robotics-upo/G-EDF-Loc).
+> The localization system based on this mapping representation is available at: [robotics-upo/G-EDF-Loc](https://github.com/robotics-upo/G-EDF-Loc).
 
 <br>
 
