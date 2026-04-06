@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>G-EDF | Block-Sparse Gaussian Distance Fields</title>
+    <meta name="description"
+        content="G-EDF: A continuous, memory-efficient distance field representation using Block-Sparse Gaussian Mixture Models for large-scale 3D environments.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="#" class="nav-logo">G-EDF</a>
+            <button class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">
+                <span></span><span></span><span></span>
+            </button>
+            <div class="nav-links" id="navLinks">
+                <a href="#abstract">Abstract</a>
+                <a href="#method">Method</a>
+                <a href="#results">Results</a>
+                <a href="#citation">Citation</a>
+                <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+                    <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero hero-animated">
+        <div class="hero-content">
+            <h1 class="hero-title">G-EDF</h1>
+            <p class="hero-subtitle">Continuous Distance Field Representation using<br>Block-Sparse Gaussian Mixture
+                Models</p>
+
+            <div class="hero-meta">
+                <div class="hero-authors">
+                    <a href="https://scholar.google.com/citations?user=_csNaiYAAAAJ" target="_blank">José E. Maese</a>
+                    <a href="https://scholar.google.com/citations?user=4Ufn1_8AAAAJ&hl=es" target="_blank">Lucía
+                        Coto-Elena</a>
+                    <a href="https://scholar.google.com/citations?user=BNdMkI8AAAAJ" target="_blank">Luis Merino</a>
+                    <a href="https://scholar.google.es/citations?user=nb2teTwAAAAJ&hl=es" target="_blank">Fernando
+                        Caballero</a>
+                </div>
+                <div class="hero-affiliation">
+                    <a href="https://robotics.upo.es/" target="_blank">Service Robotics Laboratory</a> · Universidad
+                    Pablo de Olavide
+                </div>
+            </div>
+
+            <div class="hero-buttons">
+                <a href="#" class="btn btn-primary disabled">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                    </svg>
+                    Paper
+                </a>
+                <a href="https://github.com/robotics-upo/g-edf" class="btn btn-secondary" target="_blank">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path
+                            d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                    </svg>
+                    Code
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Abstract Section with Image Carousel -->
+    <section id="abstract" class="section" data-reveal>
+        <div class="container abstract-layout">
+            <!-- Image Carousel -->
+            <div class="abstract-carousel">
+                <div class="carousel-viewport">
+                    <div class="carousel-track" id="carouselTrack">
+                        <!-- Snail Dataset -->
+                        <div class="carousel-slide active" data-caption="Snail Dataset — Urban detail view">
+                            <img src="media/snail_detail_1.png" alt="Snail dataset — Urban detail view">
+                        </div>
+                        <div class="carousel-slide" data-caption="Snail Dataset — Urban detail view">
+                            <img src="media/snail_detail_2.png" alt="Snail dataset — Urban detail view">
+                        </div>
+                        <div class="carousel-slide" data-caption="Snail Dataset — Top view">
+                            <img src="media/snail_detail_3.png" alt="Snail dataset — Top view">
+                        </div>
+                        <div class="carousel-slide" data-caption="Snail Dataset — Top view">
+                            <img src="media/snail_detail_4.png" alt="Snail dataset — Top view">
+                        </div>
+
+                        <!-- New College Dataset -->
+                        <div class="carousel-slide" data-caption="New College Dataset — Urban detail view">
+                            <img src="media/college_detail_1.png" alt="New College Dataset — Urban detail view">
+                        </div>
+                        <div class="carousel-slide" data-caption="New College Dataset — Urban detail view">
+                            <img src="media/college_detail_2.png" alt="New College Dataset — Urban detail view">
+                        </div>
+                        <div class="carousel-slide" data-caption="New College Dataset — Top view">
+                            <img src="media/college_detail_3.png" alt="New College Dataset — Top view">
+                        </div>
+                        <div class="carousel-slide" data-caption="New College Dataset — Top view">
+                            <img src="media/college_detail_4.png" alt="New College Dataset — Top view">
+                        </div>
+                    </div>
+                    <button class="carousel-arrow carousel-prev" id="carouselPrev" aria-label="Previous image">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
+                    <button class="carousel-arrow carousel-next" id="carouselNext" aria-label="Next image">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 6 15 12 9 18"></polyline>
+                        </svg>
+                    </button>
+                    <div class="carousel-dots" id="carouselDots">
+                        <span class="carousel-dot active" data-index="0"></span>
+                        <span class="carousel-dot" data-index="1"></span>
+                        <span class="carousel-dot" data-index="2"></span>
+                        <span class="carousel-dot" data-index="3"></span>
+                        <span class="carousel-dot" data-index="4"></span>
+                        <span class="carousel-dot" data-index="5"></span>
+                        <span class="carousel-dot" data-index="6"></span>
+                        <span class="carousel-dot" data-index="7"></span>
+                    </div>
+                </div>
+                <span class="carousel-caption" id="carouselCaption">Snail Dataset — Urban detail view 1</span>
+            </div>
+
+            <!-- Abstract Text -->
+            <div class="abstract-content">
+                <h2 class="section-title">Abstract</h2>
+                <p class="abstract-text">
+                    We present <strong>G-EDF</strong>, a novel framework for representing large-scale 3D environments as
+                    a
+                    continuous, memory-efficient distance field. The Euclidean Distance Field (EDF) is modeled using a
+                    <strong>Block-Sparse Gaussian Mixture Model</strong>, where anisotropic Gaussians serve as universal
+                    function approximators. The space is partitioned into adaptive blocks that are seamlessly blended to
+                    guarantee global <strong>C<sup>1</sup> continuity</strong>. The result is a highly compressed map
+                    enabling efficient CPU-based inference for gradient-based localization and navigation.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Method Section -->
+    <section id="method" class="section section-alt" data-reveal>
+        <div class="container">
+            <h2 class="section-title">Method</h2>
+
+            <!-- Core Formulation -->
+            <div class="formula-section">
+                <div class="formula-visual">
+                    <div class="formula-diagram">
+                        <div class="diagram-label">Distance Field</div>
+                        <div class="diagram-equation" id="eq1"></div>
+                    </div>
+                    <div class="formula-explanation">
+                        <h3>Gaussian Mixture Approximation</h3>
+                        <p>The <span class="hl-target" data-highlight="dhat">distance field</span> is represented as a
+                            weighted <span class="hl-target" data-highlight="sum">sum of <em>K</em> anisotropic Gaussian
+                                kernels</span>. Each kernel has:
+                        </p>
+                        <ul>
+                            <li class="hl-target" data-highlight="wk"><strong>w<sub>k</sub></strong> — amplitude weight
+                                (can be negative)</li>
+                            <li class="hl-target" data-highlight="mu"><strong>μ<sub>k</sub></strong> — center position
+                                in 3D</li>
+                            <li class="hl-target" data-highlight="sigma"><strong>Σ<sub>k</sub></strong> — diagonal
+                                covariance matrix</li>
+                        </ul>
+                        <p>Negative weights carve sharp valleys near surfaces, enabling precise zero-crossings.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Features -->
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="1.5">
+                            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                            <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+                            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                        </svg>
+                    </div>
+                    <h4>Block-Sparse Architecture</h4>
+                    <p>Space is partitioned into 1m³ cubes. Each trains an independent GMM, enabling parallel processing
+                        at scale.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="1.5">
+                            <path
+                                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                            </path>
+                        </svg>
+                    </div>
+                    <h4>Adaptive Complexity</h4>
+                    <p>Gaussian count scales with geometric complexity. Simple regions use fewer kernels; complex areas
+                        get more.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 18 C 6 18, 6 6, 12 6 S 18 18, 22 18"></path>
+                        </svg>
+                    </div>
+                    <h4>C¹ Blending</h4>
+                    <p>Adjacent blocks share overlap margins blended via Smoothstep: α(t) = 3t² − 2t³, ensuring gradient
+                        continuity.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="1.5">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                    <h4>Eikonal Gradient</h4>
+                    <p>Closed-form ∇d̂(x) satisfies ‖∇d̂‖ ≈ 1 throughout the volume for stable optimization.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Results Section -->
+    <section id="results" class="section" data-reveal>
+        <div class="container">
+            <h2 class="section-title">Results</h2>
+
+            <div class="metrics-container" data-reveal style="margin-bottom: 2rem;">
+                <div class="metric-item">
+                    <span class="metric-value" data-count="&lt; 3cm">&lt; 3cm</span>
+                    <span class="metric-label">Mean Absolute Error</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-value" data-count="≈ 1.0">≈ 1.0</span>
+                    <span class="metric-label">Gradient Magnitude</span>
+                </div>
+            </div>
+
+            <!-- Toggle switch -->
+            <div class="toggle-container" data-reveal>
+                <div class="segmented-toggle" id="segmentedToggle">
+                    <input type="checkbox" id="viewToggle">
+                    <span class="segment-option active-text" data-value="edf">EDF</span>
+                    <span class="segment-option" data-value="gradient">Gradient</span>
+                    <div class="segment-indicator" id="segmentIndicator"></div>
+                </div>
+            </div>
+
+            <p class="results-intro" style="margin-top: 1.5rem; margin-bottom: 2.5rem;">
+                Comparison on New College dataset (z = 3.0m) with 1.0m³ blocks and δ = 0.25m overlap.
+            </p>
+
+            <div class="results-panels">
+                <!-- EDF Panel -->
+                <div class="results-panel active" id="panel-edf">
+                    <div class="images-row">
+                        <figure>
+                            <img src="media/new_college_v1_z_3.0_edf_blendFalse.png" alt="EDF without blending">
+                            <figcaption>Without Blending</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="media/new_college_v1_z_3.0_edf_blendTrue.png" alt="EDF with blending">
+                            <figcaption>With Blending</figcaption>
+                        </figure>
+                    </div>
+                </div>
+
+                <!-- Gradient Panel -->
+                <div class="results-panel" id="panel-gradient">
+                    <div class="images-row">
+                        <figure>
+                            <img src="media/new_college_v1_z_3.0_gradient_blendFalse.png"
+                                alt="Gradient without blending">
+                            <figcaption>Without Blending</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="media/new_college_v1_z_3.0_gradient_blendTrue.png" alt="Gradient with blending">
+                            <figcaption>With Blending</figcaption>
+                        </figure>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quantitative Results Table -->
+            <div class="table-container" data-reveal>
+                <div class="table-wrapper">
+                    <table class="results-table">
+                        <caption>Quantitative results on reconstruction fidelity. Distance errors are in meters (↓ lower
+                            is better). Gradient magnitude (‖∇d̂‖) indicates Eikonal consistency (≈ 1.0 is ideal).
+                        </caption>
+                        <thead>
+                            <tr>
+                                <th rowspan="2">Dataset</th>
+                                <th colspan="3" class="col-group">Distance Error (m)</th>
+                                <th colspan="2" class="col-group">Gradient ‖∇d̂‖</th>
+                            </tr>
+                            <tr>
+                                <th>MAE ↓</th>
+                                <th>Med. ↓</th>
+                                <th>Std ↓</th>
+                                <th>Mean</th>
+                                <th>Std ↓</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>New College</strong></td>
+                                <td>0.033</td>
+                                <td>0.018</td>
+                                <td>0.044</td>
+                                <td>0.984</td>
+                                <td>0.089</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Snail</strong></td>
+                                <td>0.035</td>
+                                <td>0.018</td>
+                                <td>0.049</td>
+                                <td>0.979</td>
+                                <td>0.108</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Citation Section -->
+    <section id="citation" class="section section-alt" data-reveal>
+        <div class="container">
+            <h2 class="section-title">Citation</h2>
+
+            <p class="code-intro" style="text-align: left;">
+                If you find our work useful in your research, please consider citing:
+            </p>
+
+            <div class="code-block citation-block" style="text-align: left;">
+                <div class="code-header">
+                    <span>BibTeX</span>
+                    <button class="copy-btn" title="Copy to clipboard">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        <span class="copy-text">Copy</span>
+                    </button>
+                </div>
+                <pre><code class="cite-content">@misc{maese2026gedf,
+    author={Maese, José E. and Coto-Elena, Lucía and Merino, Luis and Caballero, Fernando},
+    title={{G-EDF: Continuous Distance Field Representation using Block-Sparse Gaussian Mixture Models}},
+    year={2026}
+}</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <strong>G-EDF</strong>
+                </div>
+                <div class="footer-links">
+                    <a href="https://github.com/robotics-upo/g-edf" target="_blank">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                            fill="currentColor">
+                            <path
+                                d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                        </svg>
+                        GitHub
+                    </a>
+                    <a href="#" class="footer-link-disabled">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                        </svg>
+                        Paper
+                    </a>
+                </div>
+            </div>
+
+            <div class="footer-funding">
+                <span class="footer-funding-label">Funding</span>
+                <ul class="funding-list">
+                    <li><strong>PICRA 4.0</strong> (PLEC2023-010353), funded by the Spanish Ministry of Science and
+                        Innovation and the Spanish Research Agency (MCIN/AEI/10.13039/501100011033).</li>
+                    <li><strong>COBUILD</strong> (PID2024-161069OB-C31), funded by the Spanish Ministry of Science,
+                        Innovation and Universities, the Spanish Research Agency (MICIU/AEI/10.13039/501100011033) and
+                        the European Regional Development Fund (FEDER, UE).</li>
+                </ul>
+                <img src="media/fondos_proyectos.png" alt="Funding logos">
+            </div>
+
+            <div class="footer-bottom">
+                © 2026 Service Robotics Laboratory, Universidad Pablo de Olavide
+            </div>
+        </div>
+    </footer>
+
+    <!-- Lightbox overlay -->
+    <div class="lightbox-overlay" id="lightboxOverlay">
+        <button class="lightbox-close" id="lightboxClose" aria-label="Close">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+        <img id="lightboxImg" src="" alt="Enlarged view">
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

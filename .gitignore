@@ -22,8 +22,3 @@ tests/
 # OS
 .DS_Store
 Thumbs.db
-
-# Anonimyzed version
-docs/index.html
-docs/script.js
-docs/style.css

@@ -250,3 +250,10 @@ CubeX,CubeY,CubeZ,MAE,StdDev,G_ID,MeanX,MeanY,MeanZ,SigmaX,SigmaY,SigmaZ,Weight
 | `MeanX,Y,Z`   | Gaussian center (absolute) |
 | `SigmaX,Y,Z`  | Standard deviations        |
 | `Weight`      | Gaussian weight            |
+
+
+## Acknowledgements
+
+![Logos](docs/media/fondos_proyectos.png)
+
+This work was supported by the grants PICRA 4.0 (PLEC2023-010353), funded by the Spanish Ministry of Science and Innovation and the Spanish Research Agency (MCIN/AEI/10.13039/501100011033); and COBUILD (PID2024-161069OB-C31), funded by the Spanish Ministry of Science, Innovation and Universities, the Spanish Research Agency (MICIU/AEI/10.13039/501100011033) and the European Regional Development Fund (FEDER, UE).
