@@ -11,7 +11,7 @@
 
 
 > [!NOTE]
-> The localization system based on this mapping representation is available at: [G-EDF-Loc](https://github.com/robotics-upo/G-EDF-Loc).
+> The localization system based on this mapping representation is available at [G-EDF-Loc](https://github.com/robotics-upo/G-EDF-Loc).
 
 <br>
 
