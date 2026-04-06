@@ -1,6 +1,5 @@
 <h1 align="center">G-EDF: Block-Sparse Gaussian Distance Fields</h1>
 
-<br>
 
 <div align="center">
   <a href="https://robotics-upo.github.io/G-EDF/"><img src="https://img.shields.io/badge/Project-Website-007acc?style=flat" alt="Project Website"></a>
@@ -10,7 +9,6 @@
   <a href="#"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?style=flat&logo=arxiv" alt="arXiv Paper"></a>
 </div>
 
-<br>
 
 > [!NOTE]
 > The localization system based on this mapping representation is available at: [G-EDF-Loc](https://anonymous.4open.science/r/G-EDF-Loc).
