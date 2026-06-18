@@ -746,6 +746,57 @@ body {
     line-height: 1.5;
 }
 
+/* Localization pipeline (distinct layout from Mapping feature-cards, same palette) */
+.pipeline {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.pipeline-step {
+    position: relative;
+    flex: 1 1 220px;
+    max-width: 260px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem 1.25rem;
+    transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.pipeline-step:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] .pipeline-step:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.pipeline-step h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.pipeline-step p {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.pipeline-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    flex: 0 0 auto;
+    padding: 0 0.25rem;
+}
+
 /* ========================================
    Results Section
    ======================================== */
@@ -779,6 +830,12 @@ body {
 
 [data-theme="dark"] .segmented-toggle {
     background: var(--bg-secondary);
+}
+
+.segmented-toggle.segmented-toggle-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .segmented-toggle input {
@@ -821,6 +878,11 @@ body {
 [data-theme="dark"] .segment-indicator {
     border-color: var(--border);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.results-table-compact {
+    max-width: 560px;
+    margin: 0 auto;
 }
 
 /* Results Panels Container */
@@ -877,6 +939,19 @@ body {
     font-size: 0.9rem;
     font-weight: 500;
     color: var(--text-muted);
+}
+
+.images-row-quad {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    max-width: 700px;
+    gap: 1.5rem;
+}
+
+.images-row-quad img {
+    height: auto;
+    width: 100%;
 }
 
 /* ========================================
@@ -1350,6 +1425,20 @@ body {
 
     .section {
         padding: 3.5rem 1rem;
+    }
+
+    .pipeline {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .pipeline-step {
+        max-width: 100%;
+        width: 100%;
+    }
+
+    .pipeline-arrow {
+        transform: rotate(90deg);
     }
 
     .formula-visual {

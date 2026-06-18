@@ -26,8 +26,10 @@
             </button>
             <div class="nav-links" id="navLinks">
                 <a href="#abstract">Abstract</a>
-                <a href="#method">Method</a>
-                <a href="#results">Results</a>
+                <a href="#method">Mapping</a>
+                <a href="#results">Reconstruction</a>
+                <a href="#loc-method">Localization</a>
+                <a href="#loc-results">Robustness</a>
                 <a href="#citation">Citation</a>
                 <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
                     <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
@@ -88,13 +90,21 @@
                     </svg>
                     Paper
                 </a>
-                <a href="https://github.com/robotics-upo/g-edf" class="btn btn-secondary" target="_blank">
+                <a href="https://github.com/robotics-upo/G-EDF" class="btn btn-secondary" target="_blank">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
                         fill="currentColor">
                         <path
                             d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                     </svg>
-                    Code
+                    Mapping Code
+                </a>
+                <a href="https://github.com/robotics-upo/G-EDF-Loc" class="btn btn-secondary" target="_blank">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path
+                            d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                    </svg>
+                    Localization Code
                 </a>
             </div>
         </div>
@@ -371,6 +381,238 @@
         </div>
     </section>
 
+    <!-- Localization Method Section -->
+    <section id="loc-method" class="section section-alt" data-reveal>
+        <div class="container">
+            <h2 class="section-title">Localization</h2>
+            <p class="results-intro" style="margin-bottom: 2.5rem;">
+                <strong>G-EDF-Loc</strong> is a direct, CPU-based 6-DoF scan-to-map registration pipeline built on top
+                of the G-EDF representation. An Error-State Kalman Filter (ESKF) predicts the pose, deskews incoming
+                LiDAR scans, and provides the initial guess for a non-linear optimization that aligns the scan
+                directly against the continuous distance field, with no feature extraction or point-to-point matching
+                required.
+            </p>
+
+            <!-- Pipeline -->
+            <div class="pipeline">
+                <div class="pipeline-step">
+                    <h4>ESKF Prior &amp; Deskewing</h4>
+                    <p>A 15-DoF Error-State Kalman Filter fuses IMU data to predict pose and deskew LiDAR sweeps,
+                        though the system remains fully operational without any IMU input.</p>
+                </div>
+
+                <div class="pipeline-arrow">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </div>
+
+                <div class="pipeline-step">
+                    <h4>Direct Gradient-Based Alignment</h4>
+                    <p>Evaluates the continuous distance field d̂(x) and its analytical gradient directly at each
+                        scan point, avoiding nearest-neighbor search and feature matching entirely.</p>
+                </div>
+
+                <div class="pipeline-arrow">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </div>
+
+                <div class="pipeline-step">
+                    <h4>Coarse-to-Fine Optimization</h4>
+                    <p>A wide-to-narrow Cauchy robust loss schedule expands the basin of attraction for large initial
+                        errors, then sharpens to reject outliers for high-precision convergence.</p>
+                </div>
+
+                <div class="pipeline-arrow">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </div>
+
+                <div class="pipeline-step">
+                    <h4>Dynamic Outlier Masking</h4>
+                    <p>Points outside the mapped volume are softly ignored (zero gradient) rather than discarded,
+                        re-entering the optimization once back in range.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Localization Results / Robustness Section -->
+    <section id="loc-results" class="section" data-reveal>
+        <div class="container">
+            <h2 class="section-title">Robustness Study</h2>
+
+            <p class="results-intro" style="margin-bottom: 2rem;">
+                G-EDF-Loc is benchmarked against Fast-GICP and NDT (via the <em>hdl_localization</em> package) on the
+                Newer College and Snail datasets, using an identical tracking pipeline for all methods. Four
+                conditions are evaluated per trajectory: nominal IMU-aided tracking (<strong>Inertial</strong>),
+                complete absence of IMU (<strong>No IMU</strong>), and two levels of injected odometry noise
+                (<strong>Low</strong> / <strong>High</strong>).
+            </p>
+
+            <!-- Trajectory toggle -->
+            <div class="toggle-container" data-reveal>
+                <div class="segmented-toggle" id="trajToggle">
+                    <input type="checkbox" id="trajViewToggle">
+                    <span class="segment-option active-text" data-value="bc">bc (Snail)</span>
+                    <span class="segment-option" data-value="park">park (Newer College)</span>
+                    <div class="segment-indicator" id="trajSegmentIndicator"></div>
+                </div>
+            </div>
+
+            <p class="results-intro" style="margin-top: 1.5rem; margin-bottom: 1.5rem;">
+                Estimated trajectories (red) against ground truth (black), Fast-GICP (blue), and NDT (green) across
+                the four evaluated conditions.
+            </p>
+
+            <div class="results-panels" style="margin-bottom: 2.5rem;">
+                <!-- bc Panel -->
+                <div class="results-panel active" id="panel-traj-bc">
+                    <div class="images-row images-row-quad">
+                        <figure>
+                            <img src="media/traj_bc_inertial.png" alt="bc trajectory - Inertial">
+                            <figcaption>Inertial</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="media/traj_bc_no_imu.png" alt="bc trajectory - No IMU">
+                            <figcaption>No IMU</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="media/traj_bc_low.png" alt="bc trajectory - Low Noise">
+                            <figcaption>Low Noise</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="media/traj_bc_high.png" alt="bc trajectory - High Noise">
+                            <figcaption>High Noise</figcaption>
+                        </figure>
+                    </div>
+                </div>
+
+                <!-- park Panel -->
+                <div class="results-panel" id="panel-traj-park">
+                    <div class="images-row images-row-quad">
+                        <figure>
+                            <img src="media/traj_park_inertial.png" alt="park trajectory - Inertial">
+                            <figcaption>Inertial</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="media/traj_park_no_imu.png" alt="park trajectory - No IMU">
+                            <figcaption>No IMU</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="media/traj_park_low.png" alt="park trajectory - Low Noise">
+                            <figcaption>Low Noise</figcaption>
+                        </figure>
+                        <figure>
+                            <img src="media/traj_park_high.png" alt="park trajectory - High Noise">
+                            <figcaption>High Noise</figcaption>
+                        </figure>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quantitative Robustness Comparison -->
+            <div class="table-container" data-reveal>
+                <p class="results-intro" style="margin-bottom: 1.5rem; font-size: 0.9rem;">
+                    Select a trajectory and a condition to compare Position (m) and Rotation (°) RMSE and average
+                    per-scan processing time (ms) across methods. "–" indicates divergence.
+                </p>
+
+                <div class="toggle-container" data-reveal>
+                    <div class="segmented-toggle segmented-toggle-scroll" id="resultTrajToggle">
+                        <span class="segment-option active-text" data-value="bc">bc</span>
+                        <span class="segment-option" data-value="sl">sl</span>
+                        <span class="segment-option" data-value="st">st</span>
+                        <span class="segment-option" data-value="ss">ss</span>
+                        <span class="segment-option" data-value="quad-medium">quad-medium</span>
+                        <span class="segment-option" data-value="quad-hard">quad-hard</span>
+                        <span class="segment-option" data-value="park">park</span>
+                        <div class="segment-indicator" id="resultTrajIndicator"></div>
+                    </div>
+                </div>
+
+                <div class="toggle-container" data-reveal style="margin-top: 0.75rem;">
+                    <div class="segmented-toggle" id="resultCondToggle">
+                        <span class="segment-option active-text" data-value="inertial">Inertial</span>
+                        <span class="segment-option" data-value="no-imu">No IMU</span>
+                        <span class="segment-option" data-value="low">Low Noise</span>
+                        <span class="segment-option" data-value="high">High Noise</span>
+                        <div class="segment-indicator" id="resultCondIndicator"></div>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table class="results-table results-table-compact" id="robustnessTable">
+                        <caption id="robustnessCaption">bc &mdash; Inertial. Best results in <strong>bold</strong>,
+                            second-best <u>underlined</u>.
+                        </caption>
+                        <thead>
+                            <tr>
+                                <th>Method</th>
+                                <th>Pos ↓ (m)</th>
+                                <th>Rot ↓ (°)</th>
+                                <th>Time ↓ (ms)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="robustnessTbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <script id="robustnessData" type="application/json">
+            {
+                "bc":          {"inertial": [["Ours",0.084,1.133,76.9,"b","b",""],["Fast-GICP",0.082,1.129,67.7,"","","b"],["NDT",0.084,1.138,94.7,"","",""]],
+                                "no-imu":   [["Ours",0.215,1.204,95.2,"b","b","b"],["Fast-GICP",2.884,38.900,1366.9,"","",""],["NDT",0.308,3.349,81.5,"","","u"]],
+                                "low":      [["Ours",0.084,1.133,107.3,"u","b",""],["Fast-GICP",0.122,1.179,78.7,"","","b"],["NDT",0.087,1.134,98.9,"b","u","u"]],
+                                "high":     [["Ours",0.118,1.207,118.5,"b","b","b"],["Fast-GICP",0.261,1.452,134.6,"","",""],["NDT",0.169,1.241,134.7,"","u","u"]]},
+                "sl":          {"inertial": [["Ours",0.157,1.049,61.8,"b","b","u"],["Fast-GICP",0.153,1.043,63.5,"u","u",""],["NDT",0.164,1.044,76.7,"","","b"]],
+                                "no-imu":   [["Ours",0.217,0.985,63.3,"b","b","b"],["Fast-GICP","–","–","–","","",""],["NDT","–","–","–","","",""]],
+                                "low":      [["Ours",0.158,1.048,70.6,"b","b","b"],["Fast-GICP",0.169,1.045,75.2,"u","u","u"],["NDT",0.165,1.045,83.1,"","u",""]],
+                                "high":     [["Ours",0.192,1.089,83.9,"b","b","b"],["Fast-GICP",0.320,1.306,148.9,"","",""],["NDT",0.219,1.167,103.3,"u","u","u"]]},
+                "st":          {"inertial": [["Ours",0.140,0.500,57.9,"u","b","u"],["Fast-GICP",0.137,0.496,61.2,"b","u",""],["NDT",0.139,0.500,85.4,"","u",""]],
+                                "no-imu":   [["Ours",0.147,0.393,61.4,"b","",""],["Fast-GICP","–","–","–","","",""],["NDT",0.154,0.369,73.8,"u","b","u"]],
+                                "low":      [["Ours",0.140,0.500,72.6,"u","b","b"],["Fast-GICP",0.141,0.513,85.2,"b","u","u"],["NDT",0.140,0.500,93.6,"u","u",""]],
+                                "high":     [["Ours",0.165,0.774,86.0,"u","u","b"],["Fast-GICP",0.319,0.744,262.5,"","b",""],["NDT",0.210,1.011,112.2,"b","","u"]]},
+                "ss":          {"inertial": [["Ours",0.114,1.032,66.7,"","u",""],["Fast-GICP",0.101,1.015,71.0,"b","b","u"],["NDT",0.101,1.018,70.1,"u","","b"]],
+                                "no-imu":   [["Ours",0.176,1.677,64.4,"b","b","b"],["Fast-GICP","–","–","–","","",""],["NDT","–","–","–","","",""]],
+                                "low":      [["Ours",0.114,1.029,85.8,"u","u",""],["Fast-GICP",0.177,1.077,89.1,"","","u"],["NDT",0.105,1.026,90.1,"b","b","b"]],
+                                "high":     [["Ours",0.144,1.110,103.6,"b","b","b"],["Fast-GICP","–","–","–","","",""],["NDT",0.198,1.176,126.6,"u","u","u"]]},
+                "quad-medium": {"inertial": [["Ours",0.111,1.950,57.5,"","","u"],["Fast-GICP",0.110,1.965,44.5,"u","u","b"],["NDT",0.104,1.961,65.7,"b","b",""]],
+                                "no-imu":   [["Ours",0.118,2.195,56.4,"u","u","b"],["Fast-GICP","–","–","–","","",""],["NDT",0.115,2.203,59.7,"b","b","u"]],
+                                "low":      [["Ours",0.107,1.887,58.4,"u","u","u"],["Fast-GICP",0.111,1.965,49.7,"b","u","b"],["NDT",0.104,1.964,71.7,"","b",""]],
+                                "high":     [["Ours",0.107,1.890,57.8,"u","u","b"],["Fast-GICP",0.117,1.993,66.5,"b","b","u"],["NDT",0.187,2.221,86.9,"","",""]]},
+                "quad-hard":   {"inertial": [["Ours",0.105,2.630,40.8,"u","b","b"],["Fast-GICP",0.114,2.805,73.7,"","",""],["NDT",0.110,2.847,62.1,"b","u","u"]],
+                                "no-imu":   [["Ours",0.131,3.142,37.6,"b","b","b"],["Fast-GICP","–","–","–","","",""],["NDT","–","–","–","","",""]],
+                                "low":      [["Ours",0.106,2.628,44.6,"b","b","b"],["Fast-GICP",0.116,2.797,67.5,"u","u","u"],["NDT",0.112,2.823,68.1,"","",""]],
+                                "high":     [["Ours",0.106,2.620,46.5,"b","b","b"],["Fast-GICP",0.206,2.767,81.9,"u","u","u"],["NDT",0.180,2.832,81.4,"","",""]]},
+                "park":        {"inertial": [["Ours",0.099,1.321,46.3,"u","b",""],["Fast-GICP",0.117,1.406,59.7,"","","u"],["NDT",0.094,1.288,62.7,"b","u","b"]],
+                                "no-imu":   [["Ours",0.119,1.408,52.7,"b","b","b"],["Fast-GICP","–","–","–","","",""],["NDT",0.139,1.586,61.9,"u","u","u"]],
+                                "low":      [["Ours",0.099,1.289,48.6,"b","b","u"],["Fast-GICP",0.113,1.311,68.1,"","u",""],["NDT",0.094,1.288,62.7,"u","","b"]],
+                                "high":     [["Ours",0.099,1.290,51.7,"b","b",""],["Fast-GICP",0.195,2.423,82.1,"","","u"],["NDT",0.142,2.481,94.4,"u","u","b"]]}
+            }
+            </script>
+
+            <p class="results-intro" style="margin-top: 2rem;">
+                Under nominal conditions, all three methods achieve State-of-the-Art accuracy at the centimeter
+                level. The gap widens dramatically under degraded odometry: <strong>Fast-GICP diverges</strong> on
+                several trajectories without IMU (e.g. <em>park</em>, <em>sl</em>, <em>st</em>, <em>ss</em>) and
+                exhibits extreme processing-time spikes (up to 1.37 s/scan on <em>bc</em> – No IMU), while G-EDF-Loc
+                maintains bounded, real-time performance and stable convergence across every tested condition,
+                including the complete absence of IMU priors.
+            </p>
+        </div>
+    </section>
+
     <!-- Citation Section -->
     <section id="citation" class="section section-alt" data-reveal>
         <div class="container">
@@ -392,9 +634,10 @@
                         <span class="copy-text">Copy</span>
                     </button>
                 </div>
-                <pre><code class="cite-content">@misc{maese2026gedf,
+                <pre><code class="cite-content">@inproceedings{maese2026gedfloc,
     author={Maese, José E. and Coto-Elena, Lucía and Merino, Luis and Caballero, Fernando},
-    title={{G-EDF: Continuous Distance Field Representation using Block-Sparse Gaussian Mixture Models}},
+    title={{G-EDF-Loc: 3D Continuous Gaussian Distance Field for Robust Gradient-Based 6DoF Localization}},
+    booktitle={2026 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
     year={2026}
 }</code></pre>
             </div>
@@ -409,13 +652,21 @@
                     <strong>G-EDF</strong>
                 </div>
                 <div class="footer-links">
-                    <a href="https://github.com/robotics-upo/g-edf" target="_blank">
+                    <a href="https://github.com/robotics-upo/G-EDF" target="_blank">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
                             fill="currentColor">
                             <path
                                 d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                         </svg>
-                        GitHub
+                        Mapping Code
+                    </a>
+                    <a href="https://github.com/robotics-upo/G-EDF-Loc" target="_blank">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                            fill="currentColor">
+                            <path
+                                d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                        </svg>
+                        Localization Code
                     </a>
                     <a href="https://arxiv.org/abs/2604.04525" target="_blank">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"

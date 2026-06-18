@@ -128,50 +128,113 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Segmented toggle
-    const viewToggle = document.getElementById('viewToggle');
-    const panelEdf = document.getElementById('panel-edf');
-    const panelGradient = document.getElementById('panel-gradient');
-    const options = document.querySelectorAll('.segment-option');
-    const indicator = document.getElementById('segmentIndicator');
+    // Segmented toggles (generic: works for any .segmented-toggle container)
+    function initSegmentedToggle(containerId, checkboxId, indicatorId, panelIds) {
+        const container = document.getElementById(containerId);
+        const checkbox = document.getElementById(checkboxId);
+        const indicator = document.getElementById(indicatorId);
+        if (!container || !checkbox || !indicator) return;
 
-    function updateIndicator(activeOption) {
-        if (indicator && activeOption) {
+        const options = container.querySelectorAll('.segment-option');
+        const panels = panelIds.map(id => document.getElementById(id));
+        if (options.length < 2 || panels.some(p => !p)) return;
+
+        function updateIndicator(activeOption) {
             indicator.style.width = activeOption.offsetWidth + 'px';
             indicator.style.left = activeOption.offsetLeft + 'px';
         }
-    }
 
-    function setActiveOption(isGradient) {
-        options.forEach(opt => opt.classList.remove('active-text'));
-        if (isGradient) {
-            options[1].classList.add('active-text');
-            updateIndicator(options[1]);
-            panelEdf.classList.remove('active');
-            panelGradient.classList.add('active');
-        } else {
-            options[0].classList.add('active-text');
-            updateIndicator(options[0]);
-            panelEdf.classList.add('active');
-            panelGradient.classList.remove('active');
+        function setActiveOption(index) {
+            options.forEach(opt => opt.classList.remove('active-text'));
+            panels.forEach(panel => panel.classList.remove('active'));
+            options[index].classList.add('active-text');
+            updateIndicator(options[index]);
+            panels[index].classList.add('active');
         }
-    }
 
-    if (viewToggle && options.length >= 2) {
         setTimeout(() => updateIndicator(options[0]), 10);
 
-        options.forEach(opt => {
+        options.forEach((opt, index) => {
             opt.addEventListener('click', function () {
-                const isGradient = this.dataset.value === 'gradient';
-                viewToggle.checked = isGradient;
-                setActiveOption(isGradient);
+                checkbox.checked = index === 1;
+                setActiveOption(index);
             });
         });
 
-        viewToggle.addEventListener('change', function () {
-            setActiveOption(this.checked);
+        checkbox.addEventListener('change', function () {
+            setActiveOption(this.checked ? 1 : 0);
         });
     }
+
+    initSegmentedToggle('segmentedToggle', 'viewToggle', 'segmentIndicator', ['panel-edf', 'panel-gradient']);
+    initSegmentedToggle('trajToggle', 'trajViewToggle', 'trajSegmentIndicator', ['panel-traj-bc', 'panel-traj-park']);
+
+    // ========================================
+    // Robustness Comparison (trajectory + condition selector -> compact table)
+    // ========================================
+    (function initRobustnessComparison() {
+        const dataEl = document.getElementById('robustnessData');
+        const trajToggle = document.getElementById('resultTrajToggle');
+        const condToggle = document.getElementById('resultCondToggle');
+        const trajIndicator = document.getElementById('resultTrajIndicator');
+        const condIndicator = document.getElementById('resultCondIndicator');
+        const tbody = document.getElementById('robustnessTbody');
+        const caption = document.getElementById('robustnessCaption');
+        if (!dataEl || !trajToggle || !condToggle || !tbody) return;
+
+        const data = JSON.parse(dataEl.textContent);
+        const condLabels = { inertial: 'Inertial', 'no-imu': 'No IMU', low: 'Low Noise', high: 'High Noise' };
+
+        let activeTraj = 'bc';
+        let activeCond = 'inertial';
+
+        function fmt(value, flag) {
+            if (flag === 'b') return `<strong>${value}</strong>`;
+            if (flag === 'u') return `<u>${value}</u>`;
+            return `${value}`;
+        }
+
+        function render() {
+            const rows = data[activeTraj][activeCond];
+            tbody.innerHTML = rows.map(([method, pos, rot, time, posFlag, rotFlag, timeFlag]) => `
+                <tr>
+                    <td>${method}</td>
+                    <td>${fmt(pos, posFlag)}</td>
+                    <td>${fmt(rot, rotFlag)}</td>
+                    <td>${fmt(time, timeFlag)}</td>
+                </tr>
+            `).join('');
+            caption.innerHTML = `${activeTraj} &mdash; ${condLabels[activeCond]}. Best results in <strong>bold</strong>, second-best <u>underlined</u>.`;
+        }
+
+        function initSelector(toggle, indicator, onSelect) {
+            const options = toggle.querySelectorAll('.segment-option');
+
+            function updateIndicator(opt) {
+                indicator.style.width = opt.offsetWidth + 'px';
+                indicator.style.left = opt.offsetLeft + 'px';
+            }
+
+            function selectOption(opt) {
+                options.forEach(o => o.classList.remove('active-text'));
+                opt.classList.add('active-text');
+                updateIndicator(opt);
+                onSelect(opt.dataset.value);
+                render();
+            }
+
+            options.forEach(opt => {
+                opt.addEventListener('click', () => selectOption(opt));
+            });
+
+            setTimeout(() => updateIndicator(toggle.querySelector('.segment-option.active-text')), 10);
+        }
+
+        initSelector(trajToggle, trajIndicator, value => { activeTraj = value; });
+        initSelector(condToggle, condIndicator, value => { activeCond = value; });
+
+        render();
+    })();
 
     // ========================================
     // Image Carousel (Snail dataset)

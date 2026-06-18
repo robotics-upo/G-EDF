@@ -255,6 +255,19 @@ CubeX,CubeY,CubeZ,MAE,StdDev,G_ID,MeanX,MeanY,MeanZ,SigmaX,SigmaY,SigmaZ,Weight
 | `Weight`      | Gaussian weight            |
 
 
+## Citation
+
+If you use this work in your research, please cite:
+
+```bibtex
+@inproceedings{maese2026gedfloc,
+    author={Maese, José E. and Coto-Elena, Lucía and Merino, Luis and Caballero, Fernando},
+    title={{G-EDF-Loc: 3D Continuous Gaussian Distance Field for Robust Gradient-Based 6DoF Localization}},
+    booktitle={2026 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
+    year={2026}
+}
+```
+
 ## Acknowledgements
 
 ![Logos](docs/media/fondos_proyectos.png)
