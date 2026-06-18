@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>G-EDF | Block-Sparse Gaussian Distance Fields</title>
+    <title>G-EDF-Loc | Continuous Gaussian Distance Field for Robust 6DoF Localization</title>
     <meta name="description"
-        content="G-EDF: A continuous, memory-efficient distance field representation using a Block-Sparse Gaussian Mixture Model for large-scale 3D environments. Accepted at IEEE/RSJ IROS 2026.">
+        content="G-EDF-Loc: A robust 6-DoF localization framework built on G-EDF, a continuous, memory-efficient distance field representation using a Block-Sparse Gaussian Mixture Model for large-scale 3D environments. Accepted at IEEE/RSJ IROS 2026.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -20,7 +20,7 @@
     <!-- Navigation -->
     <nav class="navbar">
         <div class="nav-container">
-            <a href="#" class="nav-logo">G-EDF</a>
+            <a href="#" class="nav-logo">G-EDF-Loc</a>
             <button class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">
                 <span></span><span></span><span></span>
             </button>
@@ -62,9 +62,9 @@
                 border:1px solid var(--border); text-decoration:none; margin-bottom:20px;">
                 Accepted at IEEE/RSJ IROS 2026
             </a>
-            <h1 class="hero-title">G-EDF</h1>
-            <p class="hero-subtitle">Continuous Distance Field Representation using<br>Block-Sparse Gaussian Mixture
-                Models</p>
+            <h1 class="hero-title">G-EDF-Loc</h1>
+            <p class="hero-subtitle">Robust 6DoF Localization using a Block-Sparse<br>Gaussian Mixture Distance Field
+                Representation</p>
 
             <div class="hero-meta">
                 <div class="hero-authors">
@@ -175,13 +175,14 @@
             <div class="abstract-content">
                 <h2 class="section-title">Abstract</h2>
                 <p class="abstract-text">
-                    We present <strong>G-EDF</strong>, a novel framework for representing large-scale 3D environments as
-                    a
-                    continuous, memory-efficient distance field. The Euclidean Distance Field (EDF) is modeled using a
-                    <strong>Block-Sparse Gaussian Mixture Model</strong>, where anisotropic Gaussians serve as universal
-                    function approximators. The space is partitioned into adaptive blocks that are seamlessly blended to
-                    guarantee global <strong>C<sup>1</sup> continuity</strong>. The result is a highly compressed map
-                    enabling efficient CPU-based inference for gradient-based localization and navigation.
+                    <strong>G-EDF-Loc</strong> is a robust 6-DoF localization framework built on direct,
+                    CPU-based scan-to-map registration. It leverages <strong>G-EDF</strong>, a continuous,
+                    memory-efficient 3D distance field that models the Euclidean Distance Field (EDF) with a
+                    <strong>Block-Sparse Gaussian Mixture Model</strong>, guaranteeing global
+                    <strong>C<sup>1</sup> continuity</strong> across block transitions. Its analytical,
+                    Eikonal-consistent gradients enable high-fidelity reconstruction and real-time localization.
+                    On large-scale datasets, G-EDF-Loc performs competitively against state-of-the-art methods
+                    and remains exceptionally robust even under severe odometry degradation or without IMU priors.
                 </p>
             </div>
         </div>
