@@ -9,6 +9,10 @@
   <a href="https://arxiv.org/abs/2604.04525"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?style=flat&logo=arxiv" alt="arXiv Paper"></a>
 </div>
 
+<h3 align="center">
+  Accepted at the <a href="https://2026.ieee-iros.org/">IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) 2026</a>
+</h3>
+
 
 > [!NOTE]
 > The localization system based on this mapping representation is available at [G-EDF-Loc](https://github.com/robotics-upo/G-EDF-Loc).
