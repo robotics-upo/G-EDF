@@ -1,0 +1,58 @@
+# =============================================================================
+# Plot Slice Configuration
+# =============================================================================
+# Configuration file for plot_slice.py visualization script.
+# Modify these values to customize the slice visualization.
+
+# Input File
+input_file: "/path/to/output/map.bin"          # Path to input BIN map file
+
+# Slice Configuration
+slice:
+  axis: "z"                       # Slice axis: 'x', 'y', or 'z'
+  position: 1.0                   # Position along the slice axis
+
+# Region of Interest (Plotting Bounds)
+# u is the first axis of the plot, v is the second
+# If axis='z': u=x, v=y
+# If axis='y': u=x, v=z  
+# If axis='x': u=y, v=z
+region:
+  min_u: 0.0                      # Min coordinate for first plot axis
+  max_u: 3.0                      # Max coordinate for first plot axis
+  min_v: 0.0                      # Min coordinate for second plot axis
+  max_v: 3.0                      # Max coordinate for second plot axis
+
+# Resolution
+resolution: 0.05                  # Grid resolution in meters
+
+# Blending Configuration
+blending:
+  enable: true                   # Enable blending between cubes
+  override_margin: null           # Override margin (null = use file's margin)
+
+# Plotting Configuration
+plotting:
+  colormap: "Blues"               # Matplotlib colormap name
+  invert_colormap: true           # Invert colormap (darker = closer to obstacle)
+  levels: 41                      # Number of contour levels
+  show_grid: false                # Show cube grid lines
+  show_zero_level: false          # Show zero level contour (positive/negative transition)
+  figure_size: [10, 8]            # Figure size [width, height]
+  show_colorbar: true             # Show colorbar
+  font_size: 15                   # Global font size
+
+# Visualization Mode
+visualization:
+  mode: "edf"                     # 'edf' or 'gradient'
+  # # vmigradient0.5                      # Min value for color scale (null = auto)
+  # # vmax: 1.5                      # Max value for color scale (null = auto)
+  vmin: 0.0                      # Min value for color scale (null = auto)
+  vmax: 3.5                      # Max value for color scale (null = auto)
+
+# Statistics Configuration
+statistics:
+  gradient_min_sdf: 0.1           # Exclude points with SDF < this value for gradient stats
+
+# Output
+output_dir: "sdf_gradient_images" # Directory where plots are saved (relative to cwd, or absolute)

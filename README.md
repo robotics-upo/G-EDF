@@ -239,6 +239,24 @@ A comprehensive reference script is provided to parse `.bin` files, document the
    ```
    
 
+3. **Visualize a 2D slice (EDF or gradient):**
+
+    Renders a 2D slice of the distance field or its analytical gradient magnitude as a PNG, with optional cube-blending. Settings (input file, slice axis/position, region, colormap, etc.) are read from `config/plots.yaml` and can be overridden via CLI flags.
+
+    **Install dependencies** (once):
+    ```bash
+    pip3 install -r scripts/requirements.txt
+    ```
+
+    ```bash
+    cd scripts
+    python3 plot_slice.py /path/to/map.bin --axis z --pos 1.0 --mode edf
+    python3 plot_slice.py /path/to/map.bin --axis z --pos 1.0 --mode gradient
+    ```
+
+    Output plots are saved to `output_dir` (default: `sdf_gradient_images/`, relative to the current working directory).
+   
+
 ### CSV Format (`.csv`)
 Human-readable format for debugging and visualization. Each line represents a single Gaussian:
 ```
